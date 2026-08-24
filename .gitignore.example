@@ -1,0 +1,203 @@
+
+# ignore everything in the root except the  files and folders specified below
+/*
+
+# ignore all files starting with . or ~
+.*
+~*
+
+# ignore node dependency directories
+node_modules/
+dist/
+
+# ignore OS generated files
+ehthumbs.db
+Thumbs.db
+.Trashes
+
+# ignore Editor files
+*.sublime-project
+*.sublime-workspace
+*.komodoproject
+
+# ignore log files and databases
+*.log
+*.sql
+*.sqlite
+
+# ignore compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# ignore packaged files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# ignore files that a local computer might use for its own convenience
+.DS_Store
+*.swp
+*.pyc
+
+
+
+# local build tools
+.vagrant
+.idea
+*.sassc
+*.scssc
+*.codekit
+*.sh
+*.orig
+
+# Ignore potentially dangerous files (dependabot alerts)
+yarn.lock
+#package-lock.json
+
+
+# Ignore builder files and folders
+/node_modules
+/vendor
+/public/*
+/.env
+/.budfiles
+/npm-debug.log
+/yarn-error.log
+/yarn.lock
+#/package-lock.json
+/composer.lock
+#/theme.json
+
+
+# -------------------------
+# SSL
+# -------------------------
+
+# Ignore SSL certificates
+/certs
+/certs/*
+*.pem
+
+
+# -------------------------
+# Logs
+# -------------------------
+
+# Ignore logs
+/logs
+/logs/*
+*.log
+
+# -------------------------
+# Wordpress
+# -------------------------
+
+# Track the "wordpress" directory and the outher no-wordpress folders.
+!wordpress
+
+# ignore everything in the "wordpress" directory, except "wp-content"
+wordpress/*
+!wordpress/wp-content/
+
+
+# ignore everything in the "wp-content" directory, except:
+# mu-plugins, plugins, and themes directories
+wordpress/wp-content/*
+!wordpress/wp-content/mu-plugins/
+!wordpress/wp-content/plugins/
+!wordpress/wp-content/themes/
+
+# ignore all mu-plugins, plugins, and themes
+# unless explicitly whitelisted at the end of this file
+wordpress/wp-content/mu-plugins/*
+wordpress/wp-content/plugins/*
+wordpress/wp-content/themes/*
+
+
+
+# -------------------------
+# BEGIN Whitelisted Files
+# -------------------------
+
+# track these files, if they exist
+!.gitignore
+!.editorconfig
+!.phpcs.xml.dist
+!composer.json
+!theme.json
+# Migration file
+!*.sql.gz
+
+# Markdown files
+!README.md
+!CHANGELOG.md
+!DOCKER.md
+!SERVER.md
+!SASS.md
+!VUE.md
+
+# track example files, if they exist
+!*.example
+
+# track staging files, if they exist
+!*.staging
+
+# track favicon files, if they exist
+!android-chrome-*.png
+!apple-touch-icon*.png
+!browserconfig.xml
+!favicon*.png
+!favicon*.ico
+!manifest.json
+!mstile-*.png
+!safari-pinned-tab.svg
+!site.webmanifest
+
+# Docker
+#!docker-compose.yml
+#!Caddyfile
+
+
+# Wordpress: track these mu-plugins, plugins, and themes
+
+
+# WPML Plugin: These files were updated to prevent fatal errors caused by incompatibilities between the WPML plugin and SAGE
+#!wp-content/plugins/wpml-string-translation/
+
+
+# Theme
+!wordpress/wp-content/themes/codigo/
+
+# Ignore dist folder of theme
+wordpress/wp-content/themes/codigo/dist
+# Ignore development Files
+wordpress/wp-content/themes/codigo/node_modules
+wordpress/wp-content/themes/codigo/vendor
+wordpress/wp-content/themes/codigo/.env
+wordpress/wp-content/themes/codigo/.budfiles
+wordpress/wp-content/themes/codigo/npm-debug.log
+wordpress/wp-content/themes/codigo/yarn-error.log
+wordpress/wp-content/themes/codigo/yarn.lock
+#wordpress/wp-content/themes/codigo/package-lock.json
+wordpress/wp-content/themes/codigo/composer.lock
+wordpress/wp-content/themes/codigo/assets/css/style.css
+wordpress/wp-content/themes/codigo/assets/css/*.map
+#wordpress/wp-content/themes/codigo/theme.json
+
+
+# Track public
+!wordpress/wp-content/themes/codigo/public/
+# Ignore everything inside public
+wordpress/wp-content/themes/codigo/public/*
+# But track the Vite build output
+!wordpress/wp-content/themes/codigo/public/build/
+!wordpress/wp-content/themes/codigo/public/build/**

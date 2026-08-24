@@ -1,0 +1,8 @@
+# docker-compose.remote.yml — REMOTE only
+# In remote: docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d --build
+services:
+  statamic:
+    ports:
+      - "127.0.0.1:${STATAMIC_SSL_PORT}:9000" # FPM published on loopback for host Nginx (Statamic behind NGINX), 9000 is becasue the statamic container speaks FastCGI, not HTTP (80).  
+  node:
+    profiles: ["build-only"]                    # Keep node out of the default run

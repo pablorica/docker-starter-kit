@@ -1,0 +1,45 @@
+# Caddyfile — Statamic LOCAL development (mkcert TLS, explicit port :STATAMIC_SSL_PORT)
+# To check logs: `docker compose logs caddy`
+
+
+# --- Statamic frontend ---
+https://{$STATAMIC_HOST:default.localhost}:{$STATAMIC_SSL_PORT:8454} {
+	tls /etc/caddy/certs/local.pem /etc/caddy/certs/local-key.pem
+	encode zstd gzip
+
+  root * /var/www/html/public
+
+  # --- Uploads routing from production server ---
+  # Everything under uploads (match all medial)
+  #@remoteUploads path /wp-content/uploads/*
+
+  # Proxy uploads to production
+  #handle @remoteUploads {
+  #  # Optional: allow <img> hotlinking to work from your dev pages
+  #  # (not needed for plain <img>, but helpful for JS fetch/CORS)
+  #  header Access-Control-Allow-Origin *
+  #
+  #  reverse_proxy https://pinacoremote.co.uk {
+  #   # Make upstream treat it as first-party
+  #    header_up Host pinacoremote.co.uk
+  #    header_up X-Forwarded-Host {host}
+  #    header_up X-Forwarded-Proto https
+  #    # Strip any referrer to avoid hotlink rules
+  #    header_up -Referer
+  #  }
+  #}
+
+  # Vite HMR + internal module paths
+  @vite {
+    path /@vite/*
+    path /@id/*
+    path /@fs/*
+    path /resources/*
+    path /node_modules/*
+  }
+  reverse_proxy @vite {$NODE_CONTAINER:node_default}:{$NODE_PORT:5174}
+
+  php_fastcgi {$STATAMIC_CONTAINER:statamic_default}:9000
+  file_server
+
+}

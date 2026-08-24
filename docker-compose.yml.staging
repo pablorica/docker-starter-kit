@@ -1,0 +1,114 @@
+# docker-compose.yml
+services:
+  node:
+    image: node:20-alpine
+    working_dir: /workspace/wp-content/themes/${SAGE_THEMENAME}
+    volumes:
+      - ./wordpress:/workspace
+      - sage_node_modules:/workspace/wp-content/themes/${SAGE_THEMENAME}/node_modules ## Required by SAGE
+    restart: unless-stopped
+    environment:
+      APP_URL: ${SAGE_APPURL} ## Required by SAGE
+      APP_HOST: ${SAGE_APPHOST} ## Required by SAGE
+      VITE_BASE: /wp-content/themes/${SAGE_THEMENAME}/public/build/ ## Required by SAGE
+      VITE_SERVERPORT: ${NODE_PORT} ## Required by SAGE
+      VITE_CLIENTPORT: ${WORDPRESS_SSL_PORT} ## Required by SAGE
+    ports:
+      - "${NODE_PORT}:${NODE_PORT}"
+    command: >
+      sh -lc "
+        if [ ! -f node_modules/.package-lock.json ] || ! cmp -s package-lock.json node_modules/.package-lock.json; then
+          npm ci
+          # marker so we can detect installed state in this volume
+          cp package-lock.json node_modules/.package-lock.json 2>/dev/null || true
+        fi
+
+        # Start Vite in background
+        npm run dev -- --host 0.0.0.0
+      "
+  mysql:
+    # image: mysql:latest -> do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: mysql:8.0.36
+    container_name: ${MYSQL_CONTAINER}
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    volumes: ## Important to make the database persistent and avoid data loss on container restart. Also allows pre-seeding with an existing database if needed.
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    healthcheck: ## Add a DB healthcheck (prevents race condition on first boot)
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  wordpress:
+    # image: wordpress:latest > do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: wordpress:6.9.1-php8.4-apache
+    container_name: ${WORDPRESS_CONTAINER}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # Expose only to host nginx, on a loopback-bound port (never 0.0.0.0)
+    ports:
+      - "127.0.0.1:${WORDPRESS_SSL_PORT}:80"   ## host 127.0.0.1:WORDPRESS_SSL_PORT -> container :80 (must match nginx proxy_pass)
+    environment:
+      WORDPRESS_DB_HOST: ${MYSQL_HOST}
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_HOME: ${WORDPRESS_HOME}
+      WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
+      APP_ENV: ${APP_ENV}
+    volumes:
+      - ./wordpress:/var/www/html
+      - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php
+      - ./logs:/var/www/html/logs
+      - ./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+    restart: unless-stopped
+
+  phpmyadmin:
+    # image: phpmyadmin:latest > do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: phpmyadmin:5.2
+    container_name: ${PHPMYADMIN_CONTAINER}
+    depends_on:
+      - mysql
+     # Expose only to NGINX on another local port
+    ports:
+      - "127.0.0.1:${PHPMYADMIN_PORT}:80"   ## host 127.0.0.1:PHPMYADMIN_PORT -> container :80 (MUST equal nginx /pma proxy_pass; )
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # only needed if you plan to proxy PMA at a subpath (/pma). For subdomain you can omit.
+      PMA_ABSOLUTE_URI: ${WORDPRESS_HOME}/pma/   # trailing slash; ensure WORDPRESS_HOME has NO trailing slash
+    restart: unless-stopped
+
+  wpcli:
+    # image: wordpress:cli  -> do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: wordpress:cli-php8.3
+    container_name: ${WPCLI_CONTAINER}
+    depends_on: [mysql, wordpress]
+    working_dir: /var/www/html
+    user: "www-data"                    # avoid root-owned files
+    restart: unless-stopped
+    environment:
+      WORDPRESS_DB_HOST: ${MYSQL_HOST}
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_HOME: ${WORDPRESS_HOME}
+      WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
+    volumes:
+      - ./wordpress:/var/www/html
+      - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php
+    entrypoint: ["wp"]                  # so ⁠ docker compose run wpcli <cmd> ⁠ runs ⁠ wp <cmd> ⁠
+
+volumes:
+  sage_node_modules: ## Required by Sage. Separate persistent volume for node_modules to avoid conflicts with host OS and ensure consistent dependencies across environments
+  mysql_data: ## Persistent storage for MySQL data to prevent data loss on container restart and allow pre-seeding with existing database if needed

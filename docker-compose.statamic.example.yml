@@ -1,0 +1,68 @@
+# docker-compose.yml
+services:
+  node:
+    image: node:25-alpine
+    ports:
+      - "${NODE_PORT:-5173}:${NODE_PORT:-5173}"
+    build:
+      context: ./docker/node # build a custom Node image to match your host's UID/GID (optional, but helps with file permissions)
+    container_name: ${NODE_CONTAINER:-statamic_node}  # optional: name your container for easier access, this is called in Caddyfile
+    working_dir: /var/www/html
+    volumes:
+      - ./statamic:/var/www/html     # or ./ if your app lives at the root
+    # entrypoint: ["sh", "-c"] # override the default node image entrypoint to allow custom commands
+    command: ["tail", "-f", "/dev/null"]   # keep the container running (so we can use docker compose exec isntead of docker compose run ). That is useful for local development, but for a remote production server you would normally build assets once and avoid publishing the Vite dev server port. Vite’s dev server is for development, not for serving production traffic
+    extra_hosts:
+    - "${STATAMIC_HOST}:host-gateway"  # <-- let the container resolve your host's DNS name to the host's IP address, useful for Caddy to proxy to Node
+    # optional: run as your host user to avoid root-owned files
+    # user: "${UID:-1000}:${GID:-1000}"
+  statamic:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+      #args:
+      #  UID: ${UID:-1000}
+      #  GID: ${GID:-1000}
+    container_name: ${STATAMIC_CONTAINER:-statamic_app} # optional: name your container for easier access, this is called in Caddyfile
+    working_dir: /var/www/html
+    volumes:
+      - ./statamic:/var/www/html  # In production is prefered to buid an immutable app image instead of mounting the live source tree.
+      - composer_cache:/tmp/composer
+    environment: 
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "${OPCACHE_VALIDATE_TIMESTAMPS}" # "1" is a dev-friendly setting. In production it is commonly set more aggressively for performance -> "0".
+      APP_NAME: ${APP_NAME:-default}
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${STATAMIC_DEBUG:-false}
+      APP_URL: ${STATAMIC_URL:-https://default.localhost}
+      STATAMIC_CUSTOM_LOGO_OUTSIDE_URL: "${STATAMIC_CUSTOM_LOGO_OUTSIDE_URL}"
+    # depends_on:
+    #   - redis
+
+  caddy:
+    profiles: ["local-only"] # Caddy only starts when that profile is activated (so it's disabled in remote)
+    image: caddy:2
+    container_name: ${CADDY_CONTAINER}
+    ports:
+      # - "8080:80"      # optional HTTP
+      - "${STATAMIC_SSL_PORT}:${STATAMIC_SSL_PORT}"   # HTTPS on custom port, it should match the Caddyfile port (:8454)
+    volumes:
+      - ./statamic:/var/www/html:ro # needed for  this line in Caddyfile: root * /var/www/html/public (to serve static assets and read the index.php file, set to read-only for security)
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+    depends_on:
+      - statamic
+    environment:
+      STATAMIC_SSL_PORT: ${STATAMIC_SSL_PORT}       
+      STATAMIC_CONTAINER: ${STATAMIC_CONTAINER:-statamic_app}    
+      STATAMIC_HOST: ${STATAMIC_HOST}   
+      NODE_CONTAINER: ${NODE_CONTAINER}       
+      NODE_PORT: ${NODE_PORT}     
+      LOG_LEVEL: ${LOG_LEVEL}
+
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: statamic_redis
+  #   ports:
+  #     - "6380:6379"
+volumes:
+  composer_cache:

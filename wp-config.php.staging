@@ -1,0 +1,66 @@
+<?php
+// === Load DB creds from env (set in docker-compose) ===
+define('DB_NAME',     getenv('WORDPRESS_DB_NAME')     ?: getenv('MYSQL_DATABASE') ?: 'default');
+define('DB_USER',     getenv('WORDPRESS_DB_USER')     ?: getenv('MYSQL_USER')     ?: 'default');
+define('DB_PASSWORD', getenv('WORDPRESS_DB_PASSWORD') ?: getenv('MYSQL_PASSWORD') ?: 'default');
+define('DB_HOST',     getenv('WORDPRESS_DB_HOST')     ?: 'db:3306');
+
+define('DB_CHARSET', 'utf8mb4');
+define('DB_COLLATE', '');
+
+// Table prefix
+$table_prefix = getenv('WORDPRESS_TABLE_PREFIX') ?: 'wp_';
+
+// Reverse proxy / Caddy HTTPS detection
+if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+  $_SERVER['HTTPS'] = 'on';
+}
+
+// Site URLs (override via env if you want)
+$port = getenv('WORDPRESS_SSL_PORT') ?: '443';
+$baseHome = getenv('WORDPRESS_HOME') ?: 'https://default.localhost';
+$wphome = $baseHome;
+// $wphome = getenv('WORDPRESS_HOME') ? getenv('WORDPRESS_HOME').":$port" : "https://default.localhost:$port";
+if (getenv('APP_ENV') === 'local') {
+  // enable port only for local dev, since in remote we expect the reverse proxy to handle it and provide the correct URL via env
+  // If baseHome already includes a port, don't double-append.
+  // (Simple check: if ":" appears after "https://", assume port present.)
+  $hasPort = preg_match('#^https?://[^/]+:\d+#', $baseHome) === 1;
+  $wphome = $hasPort ? $baseHome : ($baseHome . ":$port");
+}
+
+define('WP_HOME',    $wphome);
+define('WP_SITEURL', $wphome);
+define('FORCE_SSL_ADMIN', true);
+
+
+// Salts — copy the ones from your current file, or generate new and paste here:
+define('AUTH_KEY',         getenv('WORDPRESS_AUTH_KEY') ?:          '52c3cf58d39a29f6f7df6111a964352798c2bd23');
+define('SECURE_AUTH_KEY',  getenv('WORDPRESS_SECURE_AUTH_KEY') ?:   '8594079b5ca5ca14e6a552abbcc8bd1e202e6a2a');
+define('LOGGED_IN_KEY',    getenv('WORDPRESS_LOGGED_IN_KEY') ?:     '83e1c72e1378c6e1967c80186fdd0f7bb0056014');
+define('NONCE_KEY',        getenv('WORDPRESS_NONCE_KEY') ?:         '2bbfcb896a92ac11d2ac8ccd9e7c6fc62e88fdf3');
+define('AUTH_SALT',        getenv('WORDPRESS_AUTH_SALT') ?:         '4f3f2dc571002f8c8c802a36b06f24d36357126d');
+define('SECURE_AUTH_SALT', getenv('WORDPRESS_SECURE_AUTH_SALT') ?:  'd93fd8012cef76213797e9ef92364b50b762f99b');
+define('LOGGED_IN_SALT',   getenv('WORDPRESS_LOGGED_IN_SALT') ?:    '0abe866aa2c95ac5fac68814da6bca538303c6c3');
+define('NONCE_SALT',       getenv('WORDPRESS_NONCE_SALT') ?:        'dd0a9f76143182f4042d37ce2cb2f617b3f122a5');
+
+
+
+//define('WP_ALLOW_REPAIR', true);
+
+// Debug flags (recommended for dev)
+if (!defined('WP_DEBUG')) define('WP_DEBUG', getenv('WP_DEBUG') ? (getenv('WP_DEBUG') === 'true') : true);
+if (!defined('WP_DEBUG_DISPLAY')) define('WP_DEBUG_DISPLAY', false);
+if (!defined('WP_DEBUG_LOG')) define('WP_DEBUG_LOG', dirname(__FILE__) . '/logs/debug.log');
+
+// Logging (your compose maps ./logs -> /var/www/html/logs)
+ini_set('log_errors', '1');
+ini_set('error_reporting', (string) E_ALL);
+ini_set('error_log', dirname(__FILE__) . '/logs/error.log');
+
+
+// ABSPATH and bootstrap
+if (!defined('ABSPATH')) define('ABSPATH', __DIR__ . '/');
+// Avoid WP-CLI to request SSL on mysql queries
+require_once ABSPATH . 'wp-settings.php';
+

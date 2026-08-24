@@ -1,0 +1,134 @@
+# docker-compose.yml
+services:
+  node:
+    image: node:20-alpine
+    working_dir: /workspace/wp-content/themes/${WORDPRESS_THEMENAME}
+    volumes:
+      - ./wordpress:/workspace
+      - theme_node_modules:/workspace/wp-content/themes/${WORDPRESS_THEMENAME}/node_modules
+    # The SCSS/JS build + nodemon watcher don't listen on a port, so none is published.
+    # Uncomment only if you later add a dev server / livereload (e.g. BrowserSync):
+    #   ports:
+    #     - "${NODE_PORT}:${NODE_PORT}"
+    # If file-watching doesn't fire on macOS / Windows Docker Desktop, add polling —
+    # bind-mount inotify events don't cross the host boundary there:
+    #   environment:
+    #     CHOKIDAR_USEPOLLING: "true"
+    command:
+      - sh
+      - -lc
+      - |
+        if [ ! -f node_modules/.deps-installed ] || ! cmp -s package-lock.json node_modules/.deps-installed 2>/dev/null; then
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo ">> No package-lock.json found - generating one via npm install (commit it for reproducible npm ci)"
+            npm install
+          fi
+          # dedicated marker (NOT npm's own node_modules/.package-lock.json) to detect installed state
+          cp package-lock.json node_modules/.deps-installed 2>/dev/null || true
+        fi
+
+        # Start watcher
+        npm run watch
+  mysql:
+    # image: mysql:latest -> do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: mysql:8.0.36
+    container_name: ${MYSQL_CONTAINER}
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    volumes: ## Important to make the database persistent and avoid data loss on container restart. Also allows pre-seeding with an existing database if needed.
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    healthcheck: ## Add a DB healthcheck (prevents race condition on first boot)
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  wordpress:
+    # image: wordpress:latest > do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: wordpress:6.9.1-php8.4-apache
+    container_name: ${WORDPRESS_CONTAINER}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # Ports are managed by Caddy
+    # ports:
+    #  - "${WORDPRESS_SSL_PORT}:80"
+    environment:
+      WORDPRESS_DB_HOST: ${MYSQL_HOST}
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_HOME: ${WORDPRESS_HOME}
+      WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
+      APP_ENV: ${APP_ENV}
+    volumes:
+      - ./wordpress:/var/www/html
+      - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php
+      - ./logs:/var/www/html/logs
+      - ./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+    restart: unless-stopped
+
+  phpmyadmin:
+    # image: phpmyadmin:latest > do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: phpmyadmin:5.2
+    container_name: ${PHPMYADMIN_CONTAINER}
+    depends_on:
+      - mysql
+    # Ports are managed by Caddy
+    # ports:
+    #   - "${WORDPRESS_SSL_PORT}:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    restart: unless-stopped
+
+  wpcli:
+    # image: wordpress:cli  -> do not use latest to avoid unexpected breaking changes, pin to a specific version
+    image: wordpress:cli-php8.4
+    container_name: ${WPCLI_CONTAINER}
+    depends_on: [mysql, wordpress]
+    working_dir: /var/www/html
+    user: "www-data"                    # avoid root-owned files
+    environment:
+      WORDPRESS_DB_HOST: ${MYSQL_HOST}
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_HOME: ${WORDPRESS_HOME}
+      WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
+      ## WP_HOME: ${WORDPRESS_HOME}:${WORDPRESS_SSL_PORT}
+      ## WP_SITEURL: ${WORDPRESS_HOME}:${WORDPRESS_SSL_PORT}
+    volumes:
+      - ./wordpress:/var/www/html
+      - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php
+    entrypoint: ["wp"]                  # so ⁠ docker compose run wpcli <cmd> ⁠ runs ⁠ wp <cmd> ⁠
+  
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - wordpress
+      - phpmyadmin
+    ports:
+      # - "80:80"
+      # - "443:443"
+      # - "${WORDPRESS_PORT}:${WORDPRESS_PORT}"   # optional HTTP listener for redirect
+      - "${WORDPRESS_SSL_PORT}:${WORDPRESS_SSL_PORT}"   # HTTPS on custom port
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+
+
+volumes:
+  mysql_data: ## Persistent storage for MySQL data to prevent data loss on container restart and allow pre-seeding with existing database if needed
+  theme_node_modules: ## Theme node_modules kept in a container-only volume (off the host bind mount) for speed + correct arch
