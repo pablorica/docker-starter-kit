@@ -7,38 +7,38 @@ A clean starter application you can copy/paste and reuse for Docker projects. it
 
 ## Staging Server
 
-https://triz.codigo.co.uk/
+https://default.codigo.co.uk/
 
 
 ## Download Database
 
-https://triz.codigo.co.uk/latest.sql.gz
+https://default.codigo.co.uk/latest.sql.gz
 
 
 ## Download Plugins
 
-https://triz.codigo.co.uk/plugins.tar.gz
+https://default.codigo.co.uk/plugins.tar.gz
 
 
 
 ## Download Assets
 
 
-https://triz.codigo.co.uk/uploads.tar.gz
+https://default.codigo.co.uk/uploads.tar.gz
 
 
 ## Installation
 
 ### Docker Installation
 
-[DOCKER.md](https://github.com/pablorica/triz/blob/main/DOCKER.md)
+[DOCKER.md](https://github.com/pablorica/docker-starter-kit/blob/main/docs/DOCKER.md)
 
 ### Install Sage
 
 
 The theme is based in Sage 11, which is a powerful WordPress starter theme that uses Laravel Blade templating and Vite for asset management.
 
-[SAGE.md](https://github.com/pablorica/triz/blob/main/SAGE.md)
+[SAGE.md](https://github.com/pablorica/docker-starter-kit/blob/main/docs/SAGE.md)
 
 ```bash
 cd wordpress-root/wp-content/themes
@@ -691,7 +691,7 @@ This guide walks you through the process of migrating from SCSS to PostCSS in a 
 
 We strongly recommend to use PostCSS, but if you prefer to use SASS instead, follow these steps:
 
-[SASS.md](https://github.com/pablorica/triz/blob/main/SASS.md)
+[SASS.md](https://github.com/pablorica/docker-starter-kit/blob/main/docs/SASS.md)
 
 
 ---
@@ -995,7 +995,7 @@ Alpine is ideal for small interactive UI elements in server-rendered themes, giv
 However, if you have a specific use case that requires Vue’s advanced reactivity, component system, or ecosystem, it can be integrated into Sage with Vite as well:
 
 
-[VUE.md](https://github.com/pablorica/triz/blob/main/VUE.md)
+[VUE.md](https://github.com/pablorica/docker-starter-kit/blob/main/docs/VUE.md)
 
 
 
@@ -1285,8 +1285,8 @@ gsap.registerPlugin(ScrollTrigger, Draggable, Flip, MotionPathPlugin);
 Navigate to your `wp-content` directory and download the plugins archive:
 
 ```bash
-cd /triz.localhost/wp-content
-wget --user codigo --password triz https://triz.codigo.co.uk/plugins.tar.gz
+cd /default.localhost/wp-content
+wget --user codigo --password default https://default.codigo.co.uk/plugins.tar.gz
 mv plugins/ .plugins/
 tar -xzvf plugins.tar.gz
 rm -R .plugins/
@@ -1299,7 +1299,7 @@ rm -R .plugins/
 Media files are stored here:
 
 ```bash
-wget --user codigo --password triz https://triz.codigo.co.uk/uploads.tar.gz
+wget --user codigo --password default https://default.codigo.co.uk/uploads.tar.gz
 ```
 
 ### Load Database
@@ -1307,7 +1307,7 @@ wget --user codigo --password triz https://triz.codigo.co.uk/uploads.tar.gz
 1. Navigate to the database folder:
 
 ```bash
-wget --user codigo --password triz https://triz.codigo.co.uk/latest.sql.gz
+wget --user codigo --password default https://default.codigo.co.uk/latest.sql.gz
 ```
 
 2. Import the database using MySQL:
@@ -1320,11 +1320,11 @@ gunzip latest.sql.gz
 mysql -u root -p sparemytime_penny < latest.sql
 ```
 
-**Important!** Set the siteurl and homeurl to `triz.localhost` in the wp-config.php file:
+**Important!** Set the siteurl and homeurl to `default.localhost` in the wp-config.php file:
 
 ```php
-define('WP_HOME', 'http://triz.localhost');
-define('WP_SITEURL', 'http://triz.localhost');
+define('WP_HOME', 'http://default.localhost');
+define('WP_SITEURL', 'http://default.localhost');
 ```
 
 
@@ -1333,19 +1333,19 @@ define('WP_SITEURL', 'http://triz.localhost');
 1. Navigate to the project root:
 
 ```bash
-cd triz.localhost/
+cd default.localhost/
 ```
 
 2. Run a dry-run search and replace:
 
 ```bash
-wp search-replace 'canvascareers.localhost' 'triz.localhost' --dry-run --allow-root --all-tables
+wp search-replace 'canvascareers.localhost' 'default.localhost' --dry-run --allow-root --all-tables
 ```
 
 3. If everything looks good, run it for real:
 
 ```bash
-wp search-replace 'canvascareers.localhost' 'triz.localhost' --allow-root --all-tables
+wp search-replace 'canvascareers.localhost' 'default.localhost' --allow-root --all-tables
 # ---> Success: Made 27 replacements..
 ```
 
@@ -1353,9 +1353,9 @@ wp search-replace 'canvascareers.localhost' 'triz.localhost' --allow-root --all-
 ###  Optional: Create a Database Backup
 
 ```bash
-cd /triz.localhost/wp-content/themes/wp-codigo-ltv/_database
+cd /default.localhost/wp-content/themes/wp-codigo-ltv/_database
 
-mysqldump -u root -proot triz | gzip > wp-codigo-ltv.sql.gz
+mysqldump -u root -proot default | gzip > wp-codigo-ltv.sql.gz
 ```
 
 
@@ -1465,9 +1465,9 @@ Copyright 2025 Codigo Wordpress Theme released under the [MIT](https://github.co
 
 ## Versioning
 
-We use [SemVer](https://semver.org/) for versioning. For the versions available, [list of tags can be found in this page](https://github.com/pablorica/triz/tags).
+We use [SemVer](https://semver.org/) for versioning. For the versions available, [list of tags can be found in this page](https://github.com/pablorica/docker-starter-kit/tags).
 
 ### Changelog
 
-[CHANGELOG.md](https://github.com/pablorica/triz/blob/main/CHANGELOG.md)
+[CHANGELOG.md](https://github.com/pablorica/docker-starter-kit/blob/main/CHANGELOG.md)
 
