@@ -101,6 +101,9 @@ yarn.lock
 # Wordpress
 # -------------------------
 
+!docker-compose.example.yml
+!docker-compose.staging.yml
+
 # Track the "wordpress" directory and the outher no-wordpress folders.
 !wordpress
 

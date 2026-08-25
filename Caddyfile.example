@@ -1,55 +1,53 @@
-# Optional: HTTP on 8080 → redirect to HTTPS:8443
-# http://default.localhost:8080 {
-#  redir https://default.localhost:8443{uri}
-# }
+# Caddyfile — LOCAL development (mkcert TLS, explicit port :8457)
+#
+# All three hostnames share ONE mkcert certificate AND one HTTPS port.
+# The hostnames comes from Caddy's environment as {$CADDY_HOSTNAME} (fed from .env
+# via docker-compose), with default.localhost as the fallback default.
+# The port comes from Caddy's environment as {$WORDPRESS_SSL_PORT} (fed from .env
+# via docker-compose), with 8457 as the fallback default.
+#
+# Generate the cert once from the project root:
+#   mkcert -install
+#   mkdir -p certs
+#   mkcert -cert-file certs/local.pem -key-file certs/local-key.pem \
+#     default.localhost \
+#     pma.default.localhost
+#
+# *.localhost resolves to 127.0.0.1 in Chrome/Firefox. On Safari, or if it fails,
+# add to /etc/hosts:
+#   127.0.0.1  default.localhost pma.default.localhost
 
-# Main site over HTTPS on 8458 using your mkcert files
-https://default.localhost:8458 {
-  tls /etc/caddy/certs/default.localhost.pem /etc/caddy/certs/default.localhost-key.pem
-  encode zstd gzip
+# --- WordPress  ---
+https://{$CADDY_HOSTNAME:default.localhost}:{$WORDPRESS_SSL_PORT:8457} {
+	tls /etc/caddy/certs/local.pem /etc/caddy/certs/local-key.pem
+	encode zstd gzip
 
   # --- Uploads routing from production server ---
   # Everything under uploads (match all medial)
-  # @remoteUploads path /wp-content/uploads/*
+  #@remoteUploads path /wp-content/uploads/*
 
   # Proxy uploads to production
-  # handle @remoteUploads {
-    # Optional: allow <img> hotlinking to work from your dev pages
-    # (not needed for plain <img>, but helpful for JS fetch/CORS)
-    # header Access-Control-Allow-Origin *
-
-  #  reverse_proxy https://default.com {
-  #    # Make upstream treat it as first-party
-  #    header_up Host default.com
+  #handle @remoteUploads {
+  #  # Optional: allow <img> hotlinking to work from your dev pages
+  #  # (not needed for plain <img>, but helpful for JS fetch/CORS)
+  #  header Access-Control-Allow-Origin *
+  #
+  #  reverse_proxy https://mulroyarchitects.com {
+  #   # Make upstream treat it as first-party
+  #    header_up Host wpbackend.studioverve.co.uk
   #    header_up X-Forwarded-Host {host}
   #    header_up X-Forwarded-Proto https
   #    # Strip any referrer to avoid hotlink rules
   #    header_up -Referer
   #  }
-  # }
-
-  # Uncoment if you are using Vite. This will proxy the HMR and internal module paths to the Vite dev server. 
-  # Change 5177 to your Vite dev server port if different. 
-  # If you are using SAGE, you will need to proxy the base path as well (see below).
-  #@vite {
-  #  path /@vite/*
-  #  path /@id/*
-  #  path /@fs/*
-  #  path /resources/*
-  #  path /node_modules/*
   #}
 
-  # Uncomment if you are using SAGE ad Wordpress template. This will proxy the HMR and internal module paths to the Vite dev server. Sage is requesting via your base path:
-  #@vitebase path /wp-content/themes/design-storey/public/build/*
-  #reverse_proxy @vitebase node:5177
-
-  # Everything else → local WordPress
-  reverse_proxy wordpress:80
+	reverse_proxy wordpress:80
 }
 
-https://pma.default.localhost:8458 {
-  tls /etc/caddy/certs/default.localhost.pem /etc/caddy/certs/default.localhost-key.pem
-  encode zstd gzip
-  # Everything else → phpMyAdmin
-  reverse_proxy phpmyadmin:80
+# --- phpMyAdmin ---
+https://pma.{$CADDY_HOSTNAME:default.localhost}:{$WORDPRESS_SSL_PORT:8457} {
+	tls /etc/caddy/certs/local.pem /etc/caddy/certs/local-key.pem
+	encode zstd gzip
+	reverse_proxy phpmyadmin:80
 }
