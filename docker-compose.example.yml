@@ -9,8 +9,13 @@ services:
       - theme_node_modules:/workspace/wp-content/themes/${WORDPRESS_THEMENAME}/node_modules
     # The SCSS/JS build + nodemon watcher don't listen on a port, so none is published.
     # Uncomment only if you later add a dev server / livereload (e.g. BrowserSync):
-    #   ports:
-    #     - "${NODE_PORT}:${NODE_PORT}"
+    ports:
+     - "${NODE_PORT}:${NODE_PORT}"
+    # Required by SAGE (Uncomment only if the template is based in SAGE)
+    environment:
+      APP_URL: ${WORDPRESS_HOME} ## Required by SAGE
+      APP_HOST: ${CADDY_HOSTNAME} ## Required by SAGE
+      BUD_BROWSERSLIST_UPDATE: false ## Optional in SAGE 10
     # If file-watching doesn't fire on macOS / Windows Docker Desktop, add polling —
     # bind-mount inotify events don't cross the host boundary there:
     #   environment:
@@ -32,6 +37,17 @@ services:
 
         # Start watcher
         npm run watch
+  composer:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: docker/composer/Dockerfile
+    working_dir: /var/www/html/wp-content/themes/${WORDPRESS_THEMENAME}
+    # uncomment on Linux to avoid root-owned vendor/
+    #user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./wordpress:/var/www/html
+    entrypoint: ["composer"]
   mysql:
     # image: mysql:latest -> do not use latest to avoid unexpected breaking changes, pin to a specific version
     image: mysql:8.0.36
