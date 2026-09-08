@@ -104,8 +104,9 @@ yarn.lock
 !docker-compose.example.yml
 !docker-compose.staging.yml
 
-# Track the "wordpress" directory and the outher no-wordpress folders.
+# Track the "wordpress" directory  and the  "docker_sage" folders
 !wordpress
+!docker_sage
 
 # ignore everything in the "wordpress" directory, except "wp-content"
 wordpress/*
@@ -124,6 +125,9 @@ wordpress/wp-content/*
 wordpress/wp-content/mu-plugins/*
 wordpress/wp-content/plugins/*
 wordpress/wp-content/themes/*
+
+
+
 
 # -------------------------
 # Statamic
