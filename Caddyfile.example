@@ -28,17 +28,28 @@ https://{$CADDY_HOSTNAME:default.localhost}:{$WORDPRESS_SSL_PORT:8457} {
 
   # Proxy uploads to production
   #handle @remoteUploads {
+  #  root * /var/www/html
   #  # Optional: allow <img> hotlinking to work from your dev pages
   #  # (not needed for plain <img>, but helpful for JS fetch/CORS)
   #  header Access-Control-Allow-Origin *
   #
-  #  reverse_proxy https://mulroyarchitects.com {
-  #   # Make upstream treat it as first-party
-  #    header_up Host wpbackend.studioverve.co.uk
-  #    header_up X-Forwarded-Host {host}
-  #    header_up X-Forwarded-Proto https
-  #    # Strip any referrer to avoid hotlink rules
-  #    header_up -Referer
+  #  # Serve locally if the file exists on disk...
+  #  @localFile file
+  #  handle @localFile {
+  #    # 'file_server' is the handler that serves static files straight off disk
+  #    file_server
+  #  }
+  #  # ...otherwise fall back to production
+  #  handle {
+  #    reverse_proxy https://canvas-careers.com {
+  #      # Make upstream treat it as first-party
+  #      header_up Host canvas-careers.com
+  #      # This line is deprecated because reverse_proxy already sets X-Forwarded-Host to the incoming host by default.
+  #      #header_up X-Forwarded-Host {host}
+  #      header_up X-Forwarded-Proto https
+  #      # Strip any referrer to avoid hotlink rules
+  #      header_up -Referer
+  #    }
   #  }
   #}
 

@@ -129,7 +129,7 @@ services:
       - ./wordpress:/var/www/html
       - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php
     entrypoint: ["wp"]                  # so ⁠ docker compose run wpcli <cmd> ⁠ runs ⁠ wp <cmd> ⁠
-  
+
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -148,6 +148,7 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./certs:/etc/caddy/certs:ro
+      - ./wordpress/wp-content/uploads:/var/www/html/wp-content/uploads:ro  # <— Caddy will check local uploads before getting them from remote server
 
 
 volumes:
