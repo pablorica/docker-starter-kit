@@ -1,0 +1,78 @@
+# canvas-careers
+# /etc/apache2/sites-available/canvas-careers.conf
+
+<VirtualHost *:80>
+    ServerName canvas-careers.codigo.co.uk
+
+    # Equivalent of client_max_body_size 256m
+    LimitRequestBody 268435456
+
+    ProxyPreserveHost On
+    ProxyRequests Off
+
+    # Main app -> 127.0.0.1:8462
+    # ProxyPass /pma ! <-- no working well,  more specific /pma/ rule must come BEFORE the catch-all /
+    ProxyPass /pma/ http://127.0.0.1:8562/
+    ProxyPassReverse /pma/ http://127.0.0.1:8562/
+
+    ProxyPass / http://127.0.0.1:8462/
+    ProxyPassReverse / http://127.0.0.1:8462/
+
+    <Location /pma>
+        # redirect /pma -> /pma/ happens automatically via RedirectMatch below
+    </Location>
+
+    # redirect /pma -> /pma/ (matches your nginx "location = /pma")
+    RedirectMatch ^/pma$ /pma/
+
+    # phpMyAdmin under a subpath, with basic auth, stripping /pma prefix
+    <Location /pma/>
+        AuthType Basic
+        AuthName "Restricted"
+        AuthUserFile /srv/docker/canvas-careers/.htpasswd-pma
+        Require valid-user
+    </Location>
+
+    ProxyPass /pma/ http://127.0.0.1:8562/
+    ProxyPassReverse /pma/ http://127.0.0.1:8562/
+
+    ## ── Media offload: serve local uploads if present, else pull from production ──
+    #SSLProxyEngine On                     # required to proxy to an https upstream
+
+    ## Keep uploads OUT of the catch-all container proxy (must precede ProxyPass /)
+    #ProxyPass /wp-content/uploads/ !
+
+    ## Existing files served straight off the bind-mounted disk (no container hop).
+    ## Verify path:  realpath ./wordpress/wp-content/uploads
+    #Alias /wp-content/uploads/ /srv/docker/canvas-careers/wordpress/wp-content/uploads/
+    #<Directory /srv/docker/canvas-careers/wordpress/wp-content/uploads>
+    #    Require all granted
+    #    Options -Indexes
+    #</Directory>
+
+    ## Missing file -> transparently proxy from production.
+    #RewriteEngine On
+    #RewriteCond /srv/docker/canvas-careers/wordpress%{REQUEST_URI} !-f
+    #RewriteRule ^/wp-content/uploads/(.*)$ https://canvas-careers.com/wp-content/uploads/$1 [P,L]
+    #ProxyPassReverse /wp-content/uploads/ https://canvas-careers.com/wp-content/uploads/
+
+    ## Make the upstream fetch look first-party (override the global ProxyPreserveHost On)
+    #<Location /wp-content/uploads/>
+    #    ProxyPreserveHost Off
+    #    RequestHeader unset Referer
+    #</Location>
+
+    #ProxyPass / http://127.0.0.1:8462/
+    #ProxyPassReverse / http://127.0.0.1:8462/
+
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
+
+    ProxyTimeout 300
+
+    ErrorLog ${APACHE_LOG_DIR}/canvas-careers_error.log
+    CustomLog ${APACHE_LOG_DIR}/canvas-careers_access.log combined
+RewriteEngine on
+RewriteCond %{SERVER_NAME} =canvas-careers.codigo.co.uk
+RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,NE,R=permanent]
+</VirtualHost>
