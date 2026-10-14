@@ -1,6 +1,0 @@
-# docker-compose.override.yml  — LOCAL dev extras
-# In local:  docker compose --profile local-only up -d --build      (auto-loads override.yml + caddy)
-services:
-  node:
-    ports:
-      - "127.0.0.1:${NODE_PORT:-5173}:${NODE_PORT:-5173}"   # loopback only, if you even need it, often not even needed (Caddy reaches node over the Docker network

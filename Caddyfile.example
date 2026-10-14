@@ -41,9 +41,9 @@ https://{$CADDY_HOSTNAME:default.localhost}:{$WORDPRESS_SSL_PORT:8457} {
   #  }
   #  # ...otherwise fall back to production
   #  handle {
-  #    reverse_proxy https://canvas-careers.com {
+  #    reverse_proxy https://{$CADDY_PRODUCTION_DOMAIN:canvas-careers.com} {
   #      # Make upstream treat it as first-party
-  #      header_up Host canvas-careers.com
+  #      header_up Host {$CADDY_PRODUCTION_DOMAIN:canvas-careers.com}
   #      # This line is deprecated because reverse_proxy already sets X-Forwarded-Host to the incoming host by default.
   #      #header_up X-Forwarded-Host {host}
   #      header_up X-Forwarded-Proto https
