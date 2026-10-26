@@ -101,8 +101,8 @@ yarn.lock
 # Wordpress
 # -------------------------
 
-!docker-compose.example.yml
-!docker-compose.staging.yml
+!docker-compose.yml
+!docker-compose.remote.yml
 
 # Track the "wordpress" directory  and the  "docker_sage" folders
 !wordpress

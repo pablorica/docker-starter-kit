@@ -804,13 +804,8 @@ docker compose ps
 # Watch logs (Ctrl+C to stop viewing)
 docker compose logs -f
 
-# Restart just WordPress (after plugin/theme changes)
-docker compose restart wordpress
 
-# Stop everything
-docker compose down
-
-# Stop but KEEP data (volumes are preserved by default)
+# Stop everything but KEEP data (volumes are preserved by default)
 docker compose down
 
 # Stop and DELETE data (careful!)
@@ -822,9 +817,27 @@ docker compose pull && docker compose up -d
 # Bring it up
 docker compose up -d --force-recreate
 
+# Recreate container
+docker compose up -d --force-recreate wordpress
 
-# disable all plugins
-docker compose run --rm wpcli plugin deactivate --all
+# Restart container (after plugin/theme changes)
+docker compose restart wordpress
+
+# Get info of a service
+docker compose run --rm wpcli --info
+
+# Get memory limit of a service
+docker compose run --rm --entrypoint php wpcli -i | grep memory_limit
+
+# Verify php values of a service
+docker compose exec wordpress php -i | grep upload_max_filesize
+docker compose exec wordpress php -i | grep post_max_size
+
+#Get .ini files of a service
+docker compose run --rm --entrypoint php wpcli --ini
+
+#Get user of a service
+docker compose run --rm --entrypoint id wpcli
 
 # activate a default theme (if present)
 docker compose run --rm wpcli theme activate twentytwentyfive
@@ -838,15 +851,35 @@ docker compose run --rm wpcli option update use_smilies 0
 # Read wp-config
 docker compose exec wordpress sh -lc 'cat /var/www/html/wp-config.php'
 
-# Verify php values inside the container
-docker compose exec wordpress php -i | grep upload_max_filesize
-docker compose exec wordpress php -i | grep post_max_size
+
 
 # Quick reload after big changes
-cd ~/Dockers/default
 docker compose up -d --force-recreate
 
-cd ~/Dockers/default/wp-content/themes/seadesign
-npm run dist ## OR npm run watch
+# Check Wordpress salts
+docker compose run --rm wpcli eval 'foreach (["AUTH_KEY","SECURE_AUTH_KEY","LOGGED_IN_KEY","NONCE_KEY","AUTH_SALT","SECURE_AUTH_SALT","LOGGED_IN_SALT","NONCE_SALT"] as $c) echo $c, ": ", is_string(constant($c)) && constant($c) !== "" ? "OK" : "FALTA", "\n";' --skip-plugins --skip-themes --allow-root
+
+# Check Environemnt Type (local, production)
+docker compose run --rm wpcli eval 'echo wp_get_environment_type(), "\n";' --skip-plugins --skip-themes --allow-root
+
+# disable all plugins
+docker compose run --rm wpcli plugin deactivate --all
+
+
+# Active plugins list
+docker compose run --rm wpcli plugin list --status=active --allow-root --skip-plugins  --skip-themes 
+
+# Run SQL query
+docker compose run --rm wpcli db query "SELECT meta_key, COUNT(*) FROM wpcq_postmeta WHERE meta_key LIKE '%nif%' GROUP BY meta_key;" --skip-plugins --skip-themes --allow-root
+## Yu can skip only one pluginwith this: --skip-plugins=wordfence 
+
+# Run sql query on a file and export results to another file
+docker compose run --rm -T wpcli db query --skip-plugins --skip-themes --allow-root < nif_comparativa.sql > nif_comparativa.tsv
+
+
+## To verify that you can delete files from the web, create one from within the WordPress container and delete it using WP-CLI:
+docker exec wp_app2 touch /var/www/html/wp-content/uploads/prueba_uid.txt
+docker compose run --rm wpcli eval 'var_dump(unlink(WP_CONTENT_DIR . "/uploads/prueba_uid.txt"));' --skip-plugins --skip-themes
+-> bool(true)
 
 ```

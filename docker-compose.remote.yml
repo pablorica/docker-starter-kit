@@ -1,0 +1,10 @@
+# compose.remote.yml
+services:
+  wordpress:
+    ports:
+      - "127.0.0.1:${WORDPRESS_SSL_PORT:-8080}:80"
+
+  phpmyadmin:
+    # profiles: ["tools"] Optional, to run phpmyadmin only with this profile
+    ports:
+      - "127.0.0.1:${PHPMYADMIN_PORT:-8081}:80"
