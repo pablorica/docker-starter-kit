@@ -206,25 +206,58 @@ mysqldump -u root -proot default | gzip > wp-codigo-ltv.sql.gz
 
 ---
 
+## Deployment
 
-## Deploying 
+### Production
 
+-[DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+### Local
 
 1. **Build theme assets:**
 
-   ```bash
-   npm run build
-   ```
+```bash
+  npm run build
+```
 
-2. **Install Composer dependencies (without dev packages):**
+**In Docker**
+```bash
+   cd ~/Dockers/project_root
+    docker compose up -d
+    docker compose run --rm node sh -lc "npm run build"
+```
 
-   ```bash
+2. **Install Composer dependencies (composer.lock should be available):**
+
+```bash
+   ## Development
+   composer install 
+   ## Production
    composer install --no-dev --optimize-autoloader
-   ```
+```
+   **In Docker**
+
+```bash
+   docker compose run --rm composer install
+```
+
+ **If composer.lock is not available, but composer.json is**
+
+ ```bash
+   composer update -W
+```
+
+**In Docker, check the profile name in `docker-compose.yml`**
+
+```bash
+docker compose --profile tools run --rm composer update -W
+```
+
+**Note:** `-W` is the short form of `--with-all-dependencies`. It tells Composer it can also update the dependencies of the packages you’re updating, including ones you’ve required directly in `composer.json`.
 
 3. **Upload your theme files:**
 
-   Upload all files and folders in your theme directory **except** the `node_modules` folder to your host.
+   Upload all files and folders in your theme directory **except** the `node_modules` folder to your host. See [DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 
 ### Optimisation
@@ -272,6 +305,7 @@ If you're using **Apache**, add this to your virtual host configuration or `.hta
     </IfModule>
 </FilesMatch>
 ```
+
 
 **NOTE:** You can find more information about deploying a SAGE theme here
 

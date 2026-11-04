@@ -221,3 +221,5 @@ wordpress/wp-content/themes/codigo/public/*
 # But track the Vite build output
 !wordpress/wp-content/themes/codigo/public/build/
 !wordpress/wp-content/themes/codigo/public/build/**
+# Track compilator & zip script
+!wordpress/wp-content/themes/codigo/build-theme-zip.sh
