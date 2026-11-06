@@ -42,6 +42,7 @@ TEMPLATE_FILES=(
   ".editorconfig.example:.editorconfig"
   ".gitignore.example:.gitignore"
   "nginx.conf.staging:nginx.conf.staging"
+  "apache.conf.staging:apache.conf.staging"
   "docker_sage:docker"
   "docs/SAGE.md:docs/SAGE.md"
   "docs/PostCSS.md:docs/PostCSS.md"
@@ -81,6 +82,9 @@ ask_yn() {
 }
 
 gen_pass() { { LC_ALL=C tr -dc 'A-Za-z0-9%^*_+=-' </dev/urandom || true; } | head -c 20; }
+# 64-character WordPress salt (no quotes, $, \ or spaces, so it's safe in .env)
+gen_salt() { { LC_ALL=C tr -dc 'A-Za-z0-9!#%+,./:;<=>?@^_~-' </dev/urandom || true; } | head -c 64; }
+WP_SALT_KEYS=(AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT)
 
 # ask_secret VAR "Question"   (blank = generate)
 ask_secret() {
@@ -133,6 +137,8 @@ set_env() { # set_env KEY VALUE [quote]
   K=$1 V=$v perl -pi -e 's/^\Q$ENV{K}\E=.*/$ENV{K}=$ENV{V}/' .env
 }
 get_env() { sed -n "s/^$1=//p" .env | tail -n1 | sed -e "s/^['\"]//" -e "s/['\"]\$//"; }
+# file_replace FILE FROM TO   (literal text, safe for any characters)
+file_replace() { FROM=$2 TO=$3 perl -pi -e 's/\Q$ENV{FROM}\E/$ENV{TO}/g' "$1"; }
 
 # Run a command, retry with sudo if it fails (theme folder may be owned by www-data)
 sudo_if_needed() { "$@" 2>/dev/null || { warn "Retrying with sudo: $*"; sudo "$@"; }; }
@@ -292,9 +298,47 @@ if [[ $DO_ACF == y ]]; then
     printf "\n# ACF PRO licence (never commit .env)\nACF_PRO_LICENSE='%s'\n" "$ACF_PRO_LICENSE" >> .env
   fi
 fi
+# Unique WordPress salts for this project (read by wp-config.php as WORDPRESS_*)
+salts_added=n
+for k in "${WP_SALT_KEYS[@]}"; do
+  if grep -q "^WORDPRESS_$k=" .env; then
+    set_env "WORDPRESS_$k" "$(gen_salt)" quote
+  else
+    [[ $salts_added == n ]] && printf '\n# WordPress salts (unique per project, never commit .env)\n' >> .env
+    printf "WORDPRESS_%s='%s'\n" "$k" "$(gen_salt)" >> .env
+    salts_added=y
+  fi
+done
+info "Unique WordPress salts generated."
+if ! grep -q 'WORDPRESS_AUTH_KEY' docker-compose.yml; then
+  warn "docker-compose.yml doesn't pass WORDPRESS_AUTH_KEY… to WordPress, so the new salts won't be used."
+  warn "Update the template (see 'WordPress salts' in AUTOMATED-SAGE-DOCKER-SETUP.md)."
+fi
+
 DB_USER=$(get_env MYSQL_USER || true)
 DB_NAME=$(get_env MYSQL_DATABASE || true)
 info "Done (DB user: ${DB_USER:-?}, DB name: ${DB_NAME:-?})"
+
+# ---------------------------------------------------------------------------
+# 3b. Staging server configs (Nginx / Apache)
+# ---------------------------------------------------------------------------
+# On the server, docker-compose.remote.yml publishes WordPress on 127.0.0.1:${WORDPRESS_SSL_PORT}
+# and phpMyAdmin on 127.0.0.1:${PHPMYADMIN_PORT}, so the proxy uses the same two ports.
+step "Filling in nginx.conf.staging and apache.conf.staging"
+for conf in nginx.conf.staging apache.conf.staging; do
+  [[ -f $conf ]] || continue
+  file_replace "$conf" "__PROJECT__"  "$PROJECT"
+  file_replace "$conf" "__DOMAIN__"   "$PROD_DOMAIN"
+  file_replace "$conf" "__APP_PORT__" "$SSL_PORT"
+  file_replace "$conf" "__PMA_PORT__" "$PMA_PORT"
+  # __LIVE_DOMAIN__ (optional media offload in Apache) is left for you to fill in
+  left=$(grep -o '__[A-Z_]*__' "$conf" | grep -v '__LIVE_DOMAIN__' | sort -u | tr '\n' ' ' || true)
+  if [[ -n $left ]]; then
+    warn "$conf still has placeholders: $left"
+  else
+    info "$conf: $PROD_DOMAIN -> 127.0.0.1:$SSL_PORT (phpMyAdmin $PMA_PORT)"
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # 4. Docker stack

@@ -9,6 +9,8 @@ How to create a new WordPress + Sage project on Docker automatically with `new-w
 - [What the script asks](#what-the-script-asks)
 - [What the script does](#what-the-script-does)
 - [ACF PRO licence](#acf-pro-licence)
+- [WordPress salts](#wordpress-salts)
+- [Staging server (Nginx or Apache)](#staging-server-nginx-or-apache)
 - [Personal defaults](#personal-defaults)
 - [Manual installation (step by step)](#manual-installation-step-by-step)
 - [Useful commands](#useful-commands)
@@ -33,7 +35,7 @@ Composer and WP-CLI **don't** need to be installed locally. They run through Doc
 You also need:
 
 - The template project at `~/Dockers/default` with these files:
-  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `.gitignore.example`, `nginx.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md`, `docs/ALPINE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
+  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `.gitignore.example`, `nginx.conf.staging`, `apache.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md`, `docs/ALPINE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
 - An **empty** GitHub repository for the project (optional), and GitHub access through SSH keys or the `gh` CLI (see [Security notes](#security-notes)).
 
 ---
@@ -60,7 +62,7 @@ Any question can be answered in advance with an environment variable. The script
 PROJECT=skelly-couch SITE_TITLE="Skelly & Couch" PROD_DOMAIN=beta.skelly-couch.tm-studio.co.uk ./new-wp-sage.sh
 ```
 
-Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `SAGE_VERSION`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
+Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `SAGE_VERSION`, `DO_ACF` (y/n), `ACF_PRO_LICENSE`, `ACF_LICENSE_URL`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
 
 ---
 
@@ -75,8 +77,7 @@ Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`,
 | Theme folder name | `codigo` | Sage theme folder, `WORDPRESS_THEMENAME` and the replacement for `template` in `.env` |
 | WordPress SSL port | the highest port used in your other projects + 1 | `WORDPRESS_SSL_PORT` (replaces `8443`) |
 | phpMyAdmin port | SSL port + 100 | `PHPMYADMIN_PORT` (replaces `8081`) |
-| Node/Vite port | SSL port − 3200 | `NODE_PORT` (replaces `5173`) |
-| MySQL password | generated if blank | `MYSQL_PASSWORD` |
+| Node/Vite port | SSL port − 3200 | `NODE_PORT` (replaces `5173`) || MySQL password | generated if blank | `MYSQL_PASSWORD` |
 | MySQL root password | generated if blank | `MYSQL_ROOT_PASSWORD` |
 | Production domain | — (required) | `CADDY_PRODUCTION_DOMAIN`, e.g. `beta.skelly-couch.tm-studio.co.uk` or `freedmanhilmi.com` |
 | Install WordPress automatically? | yes | Runs the WordPress install with WP-CLI instead of the browser |
@@ -108,6 +109,10 @@ The script warns you when a port is already in use. Passwords can't contain a si
    - replaces ports `8443`, `8081` and `5173` with the new ones
    - sets `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `WORDPRESS_THEMENAME` and `CADDY_PRODUCTION_DOMAIN`
    - writes passwords in single quotes, so characters like `$`, `&` and `%` work. Docker Compose would otherwise read `$m` as a variable.
+
+   - generates **unique WordPress salts** for the project (`WORDPRESS_AUTH_KEY` … `WORDPRESS_NONCE_SALT`, 64 random characters each). See [WordPress salts](#wordpress-salts).
+
+   It then fills in **`nginx.conf.staging`** and **`apache.conf.staging`**: the staging domain, the project folder on the server, and the WordPress and phpMyAdmin ports (see [Staging server](#staging-server-nginx-or-apache)).
 5. **Starts Docker.** It pulls the images, then starts `mysql`, `wordpress`, `phpmyadmin` and `caddy` (Caddy is in the `dev` profile, so it's started by name). Then it waits until MySQL accepts the WordPress database user.
 6. **Installs WordPress** (optional). It uses the `wpcli` service to run `wp core install` and set **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
 7. **Installs Sage with Composer.** It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and replaces Sage's default `vite.config.js` with the custom one from the template project. That one reads `APP_URL`, `NODE_PORT`, `VITE_PATH` and the other variables set in `docker-compose.yml` (see `docs/SAGE.md`). It uses `sudo` only if a file belongs to the container user.
@@ -141,9 +146,11 @@ The script installs ACF PRO, but **activating the licence** automatically needs 
 
 ```php
 // ACF PRO licence (from .env through docker-compose). Activates the licence automatically.
-if ( getenv( 'ACF_PRO_LICENSE' ) ) {
-    define( 'ACF_PRO_LICENSE', getenv( 'ACF_PRO_LICENSE' ) );
+$acf_pro_license = getenv( 'ACF_PRO_LICENSE' );
+if ( $acf_pro_license && ! defined( 'ACF_PRO_LICENSE' ) ) {
+    define( 'ACF_PRO_LICENSE', $acf_pro_license );
 }
+unset( $acf_pro_license );
 ```
 
 **3. `.env.example`** (optional): add an empty placeholder so every project has the variable:
@@ -161,6 +168,159 @@ Notes:
 
 ---
 
+## WordPress salts
+
+The script generates **unique salts for each project** and saves them in `.env`:
+
+```ini
+WORDPRESS_AUTH_KEY='…64 random characters…'
+WORDPRESS_SECURE_AUTH_KEY='…'
+WORDPRESS_LOGGED_IN_KEY='…'
+WORDPRESS_NONCE_KEY='…'
+WORDPRESS_AUTH_SALT='…'
+WORDPRESS_SECURE_AUTH_SALT='…'
+WORDPRESS_LOGGED_IN_SALT='…'
+WORDPRESS_NONCE_SALT='…'
+```
+
+`wp-config.php` already reads them (`getenv('WORDPRESS_AUTH_KEY')` …). For them to reach WordPress, the template needs these one-off changes (`~/Dockers/default`). Without them, the script warns you and WordPress keeps using the fallback values in `wp-config.php`.
+
+**1. `docker-compose.wordpress.yml`**: pass them to the `wordpress` **and** `wpcli` services:
+
+```yaml
+  wordpress:
+    environment:
+      # ...existing variables...
+      WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY:-}
+      WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY:-}
+      WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY:-}
+      WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY:-}
+      WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT:-}
+      WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT:-}
+      WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT:-}
+      WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT:-}
+
+  wpcli:
+    environment:
+      # ...existing variables...
+      # (same eight lines as above)
+```
+
+**2. `wp-config.php.example`** (recommended): remove the hardcoded fallback salts, so no project ever shares them through the template repo:
+
+```php
+define('AUTH_KEY',         getenv('WORDPRESS_AUTH_KEY')         ?: '');
+define('SECURE_AUTH_KEY',  getenv('WORDPRESS_SECURE_AUTH_KEY')  ?: '');
+define('LOGGED_IN_KEY',    getenv('WORDPRESS_LOGGED_IN_KEY')    ?: '');
+define('NONCE_KEY',        getenv('WORDPRESS_NONCE_KEY')        ?: '');
+define('AUTH_SALT',        getenv('WORDPRESS_AUTH_SALT')        ?: '');
+define('SECURE_AUTH_SALT', getenv('WORDPRESS_SECURE_AUTH_SALT') ?: '');
+define('LOGGED_IN_SALT',   getenv('WORDPRESS_LOGGED_IN_SALT')   ?: '');
+define('NONCE_SALT',       getenv('WORDPRESS_NONCE_SALT')       ?: '');
+```
+
+If a value is missing, WordPress then generates a random one itself and stores it in the database, which is safer than a shared fallback.
+
+**3. `.env.example`** (optional): add the eight variables, empty. The script fills them in.
+
+### New salts for staging or production
+
+Each environment should have its own salts. To generate a new set for the server's `.env`:
+
+```bash
+for k in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT; do
+  printf "WORDPRESS_%s='%s'\n" "$k" "$(LC_ALL=C tr -dc 'A-Za-z0-9!#%+,./:;<=>?@^_~-' </dev/urandom | head -c 64)"
+done
+```
+
+Changing the salts logs out everyone who is signed in, so do it before launch, or when you need everyone to sign in again.
+
+---
+
+## Staging server (Nginx or Apache)
+
+The template has a config for each web server. Use the one your staging server runs:
+
+| File | Server |
+|---|---|
+| `nginx.conf.staging` | Nginx |
+| `apache.conf.staging` | Apache |
+
+Both are **templates with placeholders**. The script fills them in for each project:
+
+| Placeholder | Replaced with | Example |
+|---|---|---|
+| `__PROJECT__` | Project slug: the folder on the server (`/srv/docker/<slug>`), the `.htpasswd-pma` path and the log names | `skelly-couch` |
+| `__DOMAIN__` | Production domain (`CADDY_PRODUCTION_DOMAIN`) | `beta.skelly-couch.tm-studio.co.uk` |
+| `__APP_PORT__` | WordPress SSL port (`WORDPRESS_SSL_PORT`) | `8465` |
+| `__PMA_PORT__` | phpMyAdmin port (`PHPMYADMIN_PORT`) | `8565` |
+| `__LIVE_DOMAIN__` | **Not replaced.** Only used by the optional media offload in the Apache file. Fill it in by hand if you enable it. | `skelly-couch.com` |
+
+> The ports come from `docker-compose.remote.yml`. On the server it publishes WordPress on `127.0.0.1:${WORDPRESS_SSL_PORT}` and phpMyAdmin on `127.0.0.1:${PHPMYADMIN_PORT}`, so the proxy uses the same two ports. If you change them in the server's `.env`, change them in the Nginx/Apache config too.
+
+Both files **block `/logs/`**, because `debug.log` and `error.log` live in the web root. Nginx returns `404`. Apache returns `403` (`Require all denied`).
+
+### Installing it on the server
+
+**Nginx:**
+
+```bash
+sudo cp nginx.conf.staging /etc/nginx/sites-available/<project>.conf
+sudo ln -s /etc/nginx/sites-available/<project>.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d <prod-domain>
+```
+
+**Apache:**
+
+```bash
+sudo a2enmod proxy proxy_http headers rewrite
+sudo cp apache.conf.staging /etc/apache2/sites-available/<project>.conf
+sudo a2ensite <project>
+sudo apachectl configtest && sudo systemctl reload apache2
+sudo certbot --apache -d <prod-domain>
+```
+
+> **Apache + certbot:** certbot copies the `VirtualHost` into `/etc/apache2/sites-available/<project>-le-ssl.conf` (port 443), which is the one that actually serves the site. If you change the config **after** running certbot (e.g. to enable the media offload), make the same change in the `-le-ssl.conf` file too.
+
+phpMyAdmin is protected with basic auth. Create the password file once:
+
+```bash
+sudo htpasswd -c /srv/docker/<project>/.htpasswd-pma <user>
+```
+
+Check that the logs are blocked:
+
+```bash
+curl -I https://<prod-domain>/logs/debug.log   # 404 (Nginx) or 403 (Apache)
+```
+
+### The server's `.env`
+
+Start from a copy of the local `.env`, then change these values:
+
+| Variable | On the server | Why |
+|---|---|---|
+| `COMPOSE_PROFILES` | **empty** (`COMPOSE_PROFILES=`) | With `dev`, Caddy and Node start too. Caddy publishes `WORDPRESS_SSL_PORT` on all interfaces, which **conflicts** with the WordPress port and stops the stack from starting. Nginx or Apache does the proxying on the server. |
+| `WORDPRESS_DEBUG` | `false` | Otherwise `debug.log` keeps growing (and `WP_DEBUG` is on by default). |
+| `APP_ENV` | anything except `local` (e.g. `staging`) | With `local`, `wp-config.php` adds the port to the site URL. |
+| `WORDPRESS_HOME` | `https://<prod-domain>` | The public URL, without a port. |
+| `WORDPRESS_AUTH_KEY` … `WORDPRESS_NONCE_SALT` | **new values** | Each environment should have its own salts. See [WordPress salts](#wordpress-salts). |
+| `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` | new passwords (recommended) | Don't reuse the local ones. |
+| `ACF_PRO_LICENSE` | your key (if you use ACF PRO) | Activates the licence on the server too. |
+
+Then start the stack with both compose files. The second one publishes the ports on `127.0.0.1`:
+
+```bash
+cd /srv/docker/<project>
+docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.remote.yml ps
+```
+
+You should see `wordpress`, `mysql` and `phpmyadmin`, with **no** `caddy` or `node`.
+
+---
+
 ## Personal defaults
 
 The top of the script has a block of personal defaults. These are the values offered when you press Enter:
@@ -171,7 +331,7 @@ DEFAULT_THEME="codigo"
 DEFAULT_WP_USER="pablo.rica"
 DEFAULT_WP_EMAIL="pablo@codigo.co.uk"
 DEFAULT_GITHUB_ORG="pablorica"
-SAGE_REPO="https://github.com/roots/sage.git"
+SAGE_PACKAGE="roots/sage"
 
 # Ports in .env.example that get replaced per project
 TPL_SSL_PORT=8443
@@ -233,6 +393,7 @@ cp ../default/wp-config.php.example wp-config.php
 cp ../default/.editorconfig.example .editorconfig
 cp ../default/.gitignore.example .gitignore
 cp ../default/nginx.conf.staging nginx.conf.staging
+cp ../default/apache.conf.staging apache.conf.staging
 cp -R ../default/docker_sage docker
 mkdir -p docs
 cp ../default/docs/SAGE.md docs/SAGE.md
@@ -266,6 +427,20 @@ CADDY_PRODUCTION_DOMAIN=<prod-domain>
 ```
 
 > Put passwords that contain `$` in **single quotes**. Without them, Docker Compose reads `$something` as a variable.
+
+#### Fill in the staging server configs
+
+```bash
+for f in nginx.conf.staging apache.conf.staging; do
+  perl -pi -e 's/__PROJECT__/<project>/g; s/__DOMAIN__/<prod-domain>/g; s/__APP_PORT__/<ssl-port>/g; s/__PMA_PORT__/<pma-port>/g' "$f"
+done
+```
+
+#### Add unique WordPress salts to `.env`
+
+Use the command in [New salts for staging or production](#new-salts-for-staging-or-production) and paste its output into `.env`, replacing any existing `WORDPRESS_*_KEY` / `WORDPRESS_*_SALT` lines.
+
+See [Staging server](#staging-server-nginx-or-apache) for what each placeholder means.
 
 #### Start the stack
 
@@ -529,3 +704,4 @@ docker compose run --rm wpcli plugin list    # WP-CLI (any wp command)
 - For GitHub access, use SSH keys (`git@github.com:...`) or the GitHub CLI (`gh auth login`), which keeps your credentials securely.
 - The script prints the generated passwords at the end so you can save them in your password manager. It **never** prints the ACF PRO licence key.
 - The ACF PRO licence key is saved only in `.env`. During the install, it's passed only to the temporary `composer` container.
+- Each project gets its own WordPress salts in `.env`. Generate a new set for each server environment, and remove the hardcoded fallbacks from `wp-config.php.example` (see [WordPress salts](#wordpress-salts)).

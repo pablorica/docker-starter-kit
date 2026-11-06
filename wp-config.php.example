@@ -35,14 +35,14 @@ define('FORCE_SSL_ADMIN', true);
 
 
 // Salts — copy the ones from your current file, or generate new and paste here:
-define('AUTH_KEY',         getenv('WORDPRESS_AUTH_KEY') ?:          '52c3cf58d39a29f6f7df6111a964352798c2bd23');
-define('SECURE_AUTH_KEY',  getenv('WORDPRESS_SECURE_AUTH_KEY') ?:   '8594079b5ca5ca14e6a552abbcc8bd1e202e6a2a');
-define('LOGGED_IN_KEY',    getenv('WORDPRESS_LOGGED_IN_KEY') ?:     '83e1c72e1378c6e1967c80186fdd0f7bb0056014');
-define('NONCE_KEY',        getenv('WORDPRESS_NONCE_KEY') ?:         '2bbfcb896a92ac11d2ac8ccd9e7c6fc62e88fdf3');
-define('AUTH_SALT',        getenv('WORDPRESS_AUTH_SALT') ?:         '4f3f2dc571002f8c8c802a36b06f24d36357126d');
-define('SECURE_AUTH_SALT', getenv('WORDPRESS_SECURE_AUTH_SALT') ?:  'd93fd8012cef76213797e9ef92364b50b762f99b');
-define('LOGGED_IN_SALT',   getenv('WORDPRESS_LOGGED_IN_SALT') ?:    '0abe866aa2c95ac5fac68814da6bca538303c6c3');
-define('NONCE_SALT',       getenv('WORDPRESS_NONCE_SALT') ?:        'dd0a9f76143182f4042d37ce2cb2f617b3f122a5');
+define('AUTH_KEY',         getenv('WORDPRESS_AUTH_KEY') ?: '');
+define('SECURE_AUTH_KEY',  getenv('WORDPRESS_SECURE_AUTH_KEY') ?: '');
+define('LOGGED_IN_KEY',    getenv('WORDPRESS_LOGGED_IN_KEY') ?: '');
+define('NONCE_KEY',        getenv('WORDPRESS_NONCE_KEY') ?: '');
+define('AUTH_SALT',        getenv('WORDPRESS_AUTH_SALT') ?: '');
+define('SECURE_AUTH_SALT', getenv('WORDPRESS_SECURE_AUTH_SALT') ?: '');
+define('LOGGED_IN_SALT',   getenv('WORDPRESS_LOGGED_IN_SALT') ?: '');
+define('NONCE_SALT',       getenv('WORDPRESS_NONCE_SALT') ?: '');
 
 
 

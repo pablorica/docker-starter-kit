@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
+## [0.6.7]- 2026-11-06
+
+### Added
+- `new-wp-sage.sh`: generates unique WordPress salts for each project in `.env`, and warns if `docker-compose.yml` doesn't pass them to WordPress.
+- `docs/AUTOMATED-SAGE-DOCKER-SETUP.md`: "WordPress salts" section (template changes and generating salts for the server) and "The server's `.env`" (`COMPOSE_PROFILES`, `WORDPRESS_DEBUG`, `APP_ENV`, `WORDPRESS_HOME`, salts, and starting the stack with `docker-compose.remote.yml`).
+
+### Changed
+- `new-wp-sage.sh`: no staging-port questions. The Nginx and Apache configs use `WORDPRESS_SSL_PORT` and `PHPMYADMIN_PORT`, matching `docker-compose.remote.yml`.
+
+## [0.6.6]- 2026-11-06
+
+### Changed
+- `nginx.conf.staging` and `apache.conf.staging` are now templates (`__PROJECT__`, `__DOMAIN__`, `__APP_PORT__`, `__PMA_PORT__`). `new-wp-sage.sh` fills them in and asks for the two staging ports.
+- `apache.conf.staging`: blocks `/logs/`, removes the duplicate `/pma/` proxy rules, and moves the optional media offload block before the catch-all `ProxyPass /`.
+- `docs/AUTOMATED-SAGE-DOCKER-SETUP.md`: new "Staging server (Nginx or Apache)" section.
+
 ## [0.6.5]- 2026-11-06
 
 ### Added
