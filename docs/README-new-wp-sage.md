@@ -30,7 +30,7 @@ Composer and WP-CLI **don't** need to be installed locally. They run through Doc
 You also need:
 
 - The template project at `~/Dockers/default` with these files:
-  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `.gitignore.example`, `nginx.conf.staging` and the `docker_sage/` folder.
+  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `.gitignore.example`, `nginx.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
 - An **empty** GitHub repository for the project (optional), and GitHub access through SSH keys or the `gh` CLI (see [Security notes](#security-notes)).
 
 ---
@@ -96,7 +96,7 @@ The script warns you when a port is already in use. Passwords can't contain a si
 
 1. **Pre-flight checks.** It checks that docker, docker compose, mkcert, git and perl are installed and that Docker is running. It also checks that every template file exists and that the project folder doesn't exist yet or is empty.
 2. **Project folder and SSL certificates.** It creates `~/Dockers/<slug>/certs` and runs `mkcert` for `<slug>.localhost` and `pma.<slug>.localhost`.
-3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`).
+3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`). This includes the Sage runbook, which goes to `docs/SAGE.md`.
 4. **Creates `.env`** from `.env.example`:
    - replaces `default` with the slug and `template` with the theme name
    - replaces ports `8443`, `8081` and `5173` with the new ones
@@ -104,7 +104,7 @@ The script warns you when a port is already in use. Passwords can't contain a si
    - writes passwords in single quotes, so characters like `$`, `&` and `%` work. Docker Compose would otherwise read `$m` as a variable.
 5. **Starts Docker.** It pulls the images, then starts `mysql`, `wordpress`, `phpmyadmin` and `caddy` (Caddy is in the `dev` profile, so it's started by name). Then it waits until MySQL accepts the WordPress database user.
 6. **Installs WordPress** (optional). It uses the `wpcli` service to run `wp core install` and set **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
-7. **Installs Sage with Composer.** It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`). It uses `sudo` only if a file belongs to the container user.
+7. **Installs Sage with Composer.** It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and replaces Sage's default `vite.config.js` with the custom one from the template project. That one reads `APP_URL`, `NODE_PORT`, `VITE_PATH` and the other variables set in `docker-compose.yml` (see `docs/SAGE.md`). It uses `sudo` only if a file belongs to the container user.
 8. **Activates the theme** with the `wpcli` service.
 9. **GitHub** (optional):
     - runs `git init` and adds the remote
@@ -135,7 +135,15 @@ TPL_PMA_PORT=8081
 TPL_NODE_PORT=5173
 ```
 
-If you add or rename files in `~/Dockers/default`, update the `TEMPLATE_FILES` list in the same block.
+If you add or rename files in `~/Dockers/default`, update the `TEMPLATE_FILES` list in the same block. Subfolders such as `docs/` are created automatically.
+
+The custom Vite config's location in the template project is set in `TEMPLATE_VITE_CONFIG`:
+
+```bash
+TEMPLATE_VITE_CONFIG="wordpress/wp-content/themes/codigo/vite.config.js"
+```
+
+The config doesn't depend on the theme name (it uses `VITE_PATH` from `.env`), so the same file works for any theme.
 
 ---
 
@@ -182,6 +190,8 @@ cp ../default/.editorconfig.example .editorconfig
 cp ../default/.gitignore.example .gitignore
 cp ../default/nginx.conf.staging nginx.conf.staging
 cp -R ../default/docker_sage docker
+mkdir -p docs
+cp ../default/docs/SAGE.md docs/SAGE.md
 ```
 
 #### Create and edit the `.env` file
@@ -301,6 +311,16 @@ To pin a Sage version, add a constraint at the end, e.g. `... create-project --n
 ```bash
 cd ~/Dockers/<project>/wordpress/wp-content/themes/<theme>
 rm -rf .git .github .editorconfig .gitattributes .gitignore
+```
+
+#### Copy the custom `vite.config.js`
+
+Replace Sage's default Vite config with the custom one from the template project. It reads the variables that `docker-compose.yml` passes to the `node` service (`APP_URL`, `APP_HOST`, `APP_PORT`, `NODE_PORT`, `VITE_PATH`). See the Vite section in `docs/SAGE.md`.
+
+```bash
+cd ~/Dockers/<project>
+cp ../default/wordpress/wp-content/themes/codigo/vite.config.js \
+   wordpress/wp-content/themes/<theme>/vite.config.js
 ```
 
 #### Update Composer packages later (optional)

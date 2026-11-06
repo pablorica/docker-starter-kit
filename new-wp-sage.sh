@@ -43,7 +43,12 @@ TEMPLATE_FILES=(
   ".gitignore.example:.gitignore"
   "nginx.conf.staging:nginx.conf.staging"
   "docker_sage:docker"
+  "docs/SAGE.md:docs/SAGE.md"
 )
+
+# Custom Vite config, copied into the new theme after Sage is installed
+# (path relative to the template project folder)
+TEMPLATE_VITE_CONFIG="wordpress/wp-content/themes/codigo/vite.config.js"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -201,6 +206,7 @@ PMA_URL="https://pma.$PROJECT.localhost:$SSL_PORT"
 for pair in "${TEMPLATE_FILES[@]}"; do
   [[ -e "$TEMPLATE_DIR/${pair%%:*}" ]] || die "Missing template file: $TEMPLATE_DIR/${pair%%:*}"
 done
+[[ -f "$TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG" ]] || die "Missing template file: $TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG"
 if [[ -e $PROJECT_DIR ]] && [[ -n $(ls -A "$PROJECT_DIR" 2>/dev/null) ]]; then
   die "$PROJECT_DIR already exists and isn't empty."
 fi
@@ -234,6 +240,7 @@ mkcert -cert-file ./certs/local.pem -key-file ./certs/local-key.pem \
 step "Copying files from $TEMPLATE_DIR"
 for pair in "${TEMPLATE_FILES[@]}"; do
   src=${pair%%:*}; dst=${pair#*:}
+  mkdir -p "$(dirname "$dst")"
   cp -R "$TEMPLATE_DIR/$src" "$dst"
   info "$src -> $dst"
 done
@@ -315,6 +322,9 @@ composer_run -w /var/www/html/wp-content/themes composer \
 for f in .git .github .editorconfig .gitattributes .gitignore; do
   if [[ -e "$THEMES_DIR/$THEME/$f" ]]; then sudo_if_needed rm -rf "${THEMES_DIR:?}/$THEME/$f"; fi
 done
+# Replace Sage's default vite.config.js with our custom one (reads APP_URL, NODE_PORT, VITE_PATH…)
+sudo_if_needed cp "$TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG" "$THEMES_DIR/$THEME/vite.config.js"
+info "Custom vite.config.js copied."
 
 if [[ $WPCLI == y ]]; then
   if wp theme activate "$THEME"; then :; else warn "Activate '$THEME' manually in wp-admin."; fi

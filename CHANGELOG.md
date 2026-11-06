@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
+## [0.6.2]- 2026-11-06
+
+### Changed
+- `new-wp-sage.sh`: copies `docs/SAGE.md` into new projects and replaces Sage's default `vite.config.js` with the template's custom one after installing Sage. Both are checked before the script starts.
+- `docs/README-new-wp-sage.md`: documents both files and their manual copy steps.
+
 ## [0.6.1]- 2026-11-06
 
 ### Changed
