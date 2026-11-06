@@ -1,17 +1,20 @@
 
-# Alpine
+# Alpine.js with Sage 11
 
-Alpine is ideal for **small interactive UI elements in server-rendered themes**
+[Alpine.js](https://alpinejs.dev) is ideal for **small interactive UI elements in server-rendered themes**:
 
-* **Lightweight interactivity:** Alpine lets you add small frontend behaviors (menus, modals, accordions, tabs, etc.) directly in your markup without building a full JavaScript application.
-* **Minimal overhead:** It’s only ~10kB gzipped and requires almost no setup, which keeps the theme fast and simple.
-* **Blade-friendly:** Alpine works very naturally with **Blade templates** in Sage, because logic can live directly in the HTML using attributes (`x-data`, `x-show`, `@click`, etc.).
-* **Perfect for progressive enhancement:** It enhances server-rendered pages (WordPress output) rather than replacing them.
+* **Lightweight interactivity:** add small frontend behaviours (menus, modals, accordions, tabs…) directly in your markup, without building a full JavaScript application.
+* **Minimal overhead:** around 15 kB gzipped and almost no setup, which keeps the theme fast and simple.
+* **Blade-friendly:** the logic lives in HTML attributes (`x-data`, `x-show`, `@click`…), which fits naturally with Blade templates.
+* **Progressive enhancement:** it enhances the pages WordPress renders instead of replacing them.
 
+No Vite plugin or change to `vite.config.js` is needed.
 
+---
 
+## 1. Install
 
-These are the libraries for UI behaviour:
+Alpine plus the official plugins we use for UI behaviour:
 
 ```bash
 docker compose run --rm node sh -lc "npm install alpinejs \
@@ -19,147 +22,217 @@ docker compose run --rm node sh -lc "npm install alpinejs \
   @alpinejs/focus \
   @alpinejs/intersect \
   @alpinejs/persist"
-
 ```
 
-These are the **official Alpine plugins** and work perfectly with Sage.
+---
+
+## 2. Set it up in `resources/js/app.js`
+
+```js
+import Alpine from 'alpinejs';
+
+import collapse from '@alpinejs/collapse';
+import focus from '@alpinejs/focus';
+import intersect from '@alpinejs/intersect';
+import persist from '@alpinejs/persist';
+
+// Plugins must be registered before Alpine.start()
+Alpine.plugin(collapse);
+Alpine.plugin(focus);
+Alpine.plugin(intersect);
+Alpine.plugin(persist);
+
+// Reusable components (see section 4)
+const components = import.meta.glob('./alpine/*.js', { eager: true });
+Object.values(components).forEach(({ name, default: component }) => {
+  if (name && component) Alpine.data(name, component);
+});
+
+window.Alpine = Alpine; // handy for debugging in the browser console
+Alpine.start();
+```
+
+Notes:
+
+- Load Alpine **only in `app.js`** (the front end), not in `editor.js`. The block editor doesn't need it.
+- Call `Alpine.start()` **once**. Vite loads `app.js` as a module, which runs after the HTML has been parsed, so you don't need to wait for `DOMContentLoaded`.
+
+---
+
+## 3. Hide elements until Alpine is ready (`x-cloak`)
+
+Without this, elements with `x-show="false"` flash on screen for a moment while the page loads. Add this to `resources/css/app.css`:
+
+```css
+/* Outside any layer, so it always wins */
+[x-cloak] { display: none !important; }
+```
+
+And add `x-cloak` to anything that should start hidden:
+
+```html
+<div x-show="open" x-cloak>…</div>
+```
+
+---
+
+## 4. Reusable components (`resources/js/alpine/`)
+
+For anything bigger than a line or two, move the logic out of the Blade template into its own file. Every file in `resources/js/alpine/` is registered automatically with `Alpine.data()` by the loader in `app.js`. It's the same `import.meta.glob()` idea we use for Gutenberg extensions in `editor.js`.
+
+```
+resources/js/
+  app.js
+  alpine/
+    dropdown.js
+    modal.js
+```
+
+Each file exports a `name` and a default function that returns the component:
+
+```js
+// resources/js/alpine/dropdown.js
+export const name = 'dropdown';
+
+export default () => ({
+  open: false,
+  toggle() {
+    this.open = !this.open;
+  },
+  close() {
+    this.open = false;
+  },
+});
+```
+
+Use it in Blade:
+
+```blade
+<div x-data="dropdown" @click.outside="close()" @keydown.escape.window="close()">
+  <button @click="toggle()" :aria-expanded="open">Menu</button>
+  <ul x-show="open" x-collapse x-cloak>
+    …
+  </ul>
+</div>
+```
+
+To pass data from PHP, give the function arguments, e.g. `x-data="slider({{ json_encode($slides) }})"` with `export default (slides = []) => ({ slides, … })`.
+
+---
+
+## 5. Plugins
 
 ### Collapse
 
-Used for **menus, accordions, dropdowns**.
+Smooth height animation for **menus, accordions and dropdowns**. Use it together with `x-show`:
 
 ```html
 <div x-data="{ open: false }">
-  <button @click="open = !open">Toggle</button>
+  <button @click="open = !open" :aria-expanded="open">Toggle</button>
 
-  <div x-show="open" x-collapse>
+  <div x-show="open" x-collapse x-cloak>
     Content
   </div>
 </div>
 ```
 
-
 ### Focus
 
-Great for **modals and accessibility**.
-
-Example: focus trapping.
+Traps keyboard focus inside an element. Good for **modals, dialogs and off-canvas menus** (and accessibility):
 
 ```html
-<div x-data x-trap="open">
+<div x-data="{ open: false }">
+  <button @click="open = true">Open</button>
+
+  <div x-show="open" x-trap.inert.noscroll="open" @keydown.escape.window="open = false" x-cloak>
+    <p>Dialog content</p>
+    <button @click="open = false">Close</button>
+  </div>
+</div>
 ```
 
-Useful for:
-
-* modals
-* dialogs
-* offcanvas menus
+- `x-trap="open"` traps focus while `open` is true.
+- `.inert` makes the rest of the page unreachable for screen readers while the dialog is open.
+- `.noscroll` stops the page from scrolling behind it.
 
 ### Intersect
 
-Runs logic when element enters viewport.
-
-Perfect for:
-
-* animations
-* lazy loading
-* counters
-* scroll triggers
+Runs code when an element enters or leaves the viewport. Good for **animations, lazy loading, counters and scroll triggers**:
 
 ```html
-<div x-intersect="animate = true"></div>
+<div x-data="{ shown: false }" x-intersect.once="shown = true"
+     :class="shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'"
+     class="transition duration-700">
+  …
+</div>
 ```
 
+- `.once` runs only the first time.
+- Use `x-intersect:leave` for when the element leaves the viewport.
+- `.half` / `.full` wait until half or all of the element is visible.
 
 ### Persist
 
-Stores Alpine state in **localStorage**.
-
-Example:
+Saves Alpine state in **localStorage**, so it survives page loads. Good for a **dark mode toggle or remembering a menu's state**:
 
 ```html
-<div x-data="{ dark: $persist(false) }">
+<div x-data="{ dark: $persist(false).as('theme-dark') }" :class="{ 'dark': dark }">
+  <button @click="dark = !dark">Toggle dark mode</button>
+</div>
 ```
 
-Great for:
+Use `.as('…')` to give each stored value a unique name. Otherwise two components with a property of the same name share the same value.
 
-* dark mode toggle
-* remembering menu state
+### Morph (not installed)
 
+`@alpinejs/morph` updates the DOM by comparing old and new HTML. It's rarely needed in WordPress projects, so we skip it unless a project swaps HTML dynamically.
 
+---
 
-### How Alpine should be initialized in Sage
+## 6. Alpine with Blade
 
-In Sage 11:
+- **`@click` and other `@` shortcuts** work in Blade, because Blade only processes `@` words that are Blade directives. If one ever clashes (e.g. with a directive from Sage Directives), use the long form `x-on:click`, or escape it as `@@click`.
+- **Alpine doesn't use `{{ }}`.** It uses `x-text` and `:attribute`, so there's no clash with Blade's `{{ }}`.
+- **Pass PHP data as JSON:** `x-data="{ items: {{ json_encode($items) }} }"`. For data with quotes, use `@js($items)` (Laravel's helper, available in Sage through Acorn).
+- **Tailwind classes** inside `:class="…"` are detected automatically by Tailwind 4, as long as they're written in full (`'opacity-100'`, not `'opacity-' + value`).
 
-```
-resources/js/app.js
-```
+---
 
-Example setup:
+## 7. Alpine with Barba.js (page transitions)
 
-```javascript
-...
-import Alpine from 'alpinejs'
+Barba loads new pages without a full page reload, so `Alpine.start()` only runs once, on the first page.
 
-import collapse from '@alpinejs/collapse'
-import focus from '@alpinejs/focus'
-import intersect from '@alpinejs/intersect'
-import persist from '@alpinejs/persist'
+Alpine 3 **automatically initialises** components added to the page later. So usually components on the new pages just work, and you don't need anything extra.
 
-Alpine.plugin(collapse)
-Alpine.plugin(focus)
-Alpine.plugin(intersect)
-Alpine.plugin(persist)
+If a component doesn't start after a Barba transition, initialise the new container with Barba's hooks:
 
-window.Alpine = Alpine
-Alpine.start()
-...
-```
+```js
+import barba from '@barba/core';
+import Alpine from 'alpinejs';
 
+barba.hooks.beforeLeave(({ current }) => {
+  Alpine.destroyTree(current.container); // clean up the old page's components
+});
 
-### Small Sage tip (important)
-
-If you plan to use external JS library , like **Barba.js page transitions**, make sure Alpine **re-initializes after page swaps**.
-
-Otherwise Alpine components inside new pages won't work.
-
-Example:
-
-```javascript
-document.addEventListener('barba:after', () => {
-  Alpine.initTree(document.body)
-})
+barba.hooks.after(({ next }) => {
+  Alpine.initTree(next.container); // only the new page, not the whole body
+});
 ```
 
-This avoids many Alpine + Barba issues.
+> Barba doesn't dispatch a `barba:after` DOM event, so `document.addEventListener('barba:after', …)` never runs. Use `barba.hooks` instead.
 
+---
 
-
-### Real-world Sage stack for interactive themes
-
-Typical stack I deploy:
+## Typical stack for interactive themes
 
 ```
 Sage 11
-Bud
-Tailwind
-Alpine
-Barba
+Vite
+Tailwind CSS 4
+Alpine.js
+Barba.js (page transitions)
 Lenis (smooth scroll)
 GSAP (animations)
 ```
 
-This combo is **extremely powerful and lightweight**.
-
-### Alpine Morph
-
-Used to **diff and morph DOM elements**.
-
-More advanced usage like:
-
-* partial updates
-* DOM transitions
-
-Honestly **rare in WordPress projects**. We can  **skip morph** unless doing dynamic DOM swapping.
-
+A powerful but lightweight combination. Add each library only when a project needs it. See "Adding JS libraries" in [SAGE.md](SAGE.md).

@@ -897,33 +897,37 @@ Install JS libraries through the `node` service. It runs from the theme folder.
 
 #### Alpine.js
 
-*Planned for a future release.*
+Alpine.js adds small, reactive behaviour (menus, modals, accordions, tabs…) directly in your Blade markup. It doesn't need a Vite plugin or any change to `vite.config.js`.
 
-Alpine.js adds small, reactive behaviour directly in your Blade markup. It doesn't need a Vite plugin or any change to `vite.config.js`.
-
-1. Install Alpine.js with npm:
+The short version:
 
 ```bash
-docker compose run --rm node sh -lc "npm install alpinejs"
+docker compose run --rm node sh -lc "npm install alpinejs @alpinejs/collapse @alpinejs/focus @alpinejs/intersect @alpinejs/persist"
 ```
 
-2. Import and start it in `resources/js/app.js`:
-
 ```js
+// resources/js/app.js
 import Alpine from 'alpinejs';
+import collapse from '@alpinejs/collapse';
+import focus from '@alpinejs/focus';
+import intersect from '@alpinejs/intersect';
+import persist from '@alpinejs/persist';
+
+Alpine.plugin(collapse);
+Alpine.plugin(focus);
+Alpine.plugin(intersect);
+Alpine.plugin(persist);
 
 window.Alpine = Alpine;
 Alpine.start();
 ```
 
-3. Use it in your Blade views:
-
-```blade
-<div x-data="{ open: false }">
-  <button @click="open = !open">Menu</button>
-  <nav x-show="open">…</nav>
-</div>
+```css
+/* resources/css/app.css (outside any layer) */
+[x-cloak] { display: none !important; }
 ```
+
+👉 Full guide, including plugin examples, reusable components in `resources/js/alpine/`, Alpine with Blade, and Alpine with Barba: **[ALPINE.md](ALPINE.md)**
 
 #### Barba
 

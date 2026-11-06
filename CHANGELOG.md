@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
+
+## [0.6.4]- 2026-11-06
+
+### Changed
+- `docs/ALPINE.md`: updated for Sage 11 + Vite. Fixed the Barba re-initialisation (uses `barba.hooks`), the Focus and Intersect examples, and the stack list. Added `x-cloak`, automatic registration of components in `resources/js/alpine/`, tips for Alpine with Blade, and accessibility attributes in the examples.
+- `docs/SAGE.md`: Alpine.js section with a quick setup and a link to `docs/ALPINE.md`.
+- `new-wp-sage.sh`: also copies `docs/ALPINE.md` into new projects.
+
 ## [0.6.3]- 2026-11-06
 
 ### Changed

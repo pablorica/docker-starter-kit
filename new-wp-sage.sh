@@ -45,6 +45,7 @@ TEMPLATE_FILES=(
   "docker_sage:docker"
   "docs/SAGE.md:docs/SAGE.md"
   "docs/PostCSS.md:docs/PostCSS.md"
+  "docs/ALPINE.md:docs/ALPINE.md"
 )
 
 # Custom Vite config, copied into the new theme after Sage is installed

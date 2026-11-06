@@ -30,7 +30,7 @@ Composer and WP-CLI **don't** need to be installed locally. They run through Doc
 You also need:
 
 - The template project at `~/Dockers/default` with these files:
-  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `.gitignore.example`, `nginx.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
+  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `.gitignore.example`, `nginx.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md`, `docs/ALPINE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
 - An **empty** GitHub repository for the project (optional), and GitHub access through SSH keys or the `gh` CLI (see [Security notes](#security-notes)).
 
 ---
@@ -96,7 +96,7 @@ The script warns you when a port is already in use. Passwords can't contain a si
 
 1. **Pre-flight checks.** It checks that docker, docker compose, mkcert, git and perl are installed and that Docker is running. It also checks that every template file exists and that the project folder doesn't exist yet or is empty.
 2. **Project folder and SSL certificates.** It creates `~/Dockers/<slug>/certs` and runs `mkcert` for `<slug>.localhost` and `pma.<slug>.localhost`.
-3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`). This includes the Sage runbook (`docs/SAGE.md`) and the custom CSS guide (`docs/PostCSS.md`).
+3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`). This includes the Sage runbook (`docs/SAGE.md`), the custom CSS guide (`docs/PostCSS.md`) and the Alpine.js guide (`docs/ALPINE.md`).
 4. **Creates `.env`** from `.env.example`:
    - replaces `default` with the slug and `template` with the theme name
    - replaces ports `8443`, `8081` and `5173` with the new ones
@@ -193,6 +193,7 @@ cp -R ../default/docker_sage docker
 mkdir -p docs
 cp ../default/docs/SAGE.md docs/SAGE.md
 cp ../default/docs/PostCSS.md docs/PostCSS.md
+cp ../default/docs/ALPINE.md docs/ALPINE.md
 ```
 
 #### Create and edit the `.env` file
