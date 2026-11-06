@@ -165,16 +165,21 @@ docker info >/dev/null 2>&1 || die "Docker isn't running."
 # Questions
 # ---------------------------------------------------------------------------
 step "Project configuration"
-ask DOCKERS_DIR  "Dockers folder" "$DEFAULT_DOCKERS_DIR"
-DOCKERS_DIR=${DOCKERS_DIR/#\~/$HOME}
-ask TEMPLATE_DIR "Template (default) project folder" "$DOCKERS_DIR/default"
-TEMPLATE_DIR=${TEMPLATE_DIR/#\~/$HOME}
-[[ -d $TEMPLATE_DIR ]] || die "Template folder not found: $TEMPLATE_DIR"
-
 while :; do
-  ask PROJECT "Project slug (folder + local domain, e.g. skelly-couch)"
+  ask PROJECT "New project slug (folder + local domain, e.g. skelly-couch)"
   [[ $PROJECT =~ ^[a-z0-9][a-z0-9-]*$ ]] && break
   warn "Use lowercase letters, numbers and hyphens only."; PROJECT=''
+done
+
+ask DOCKERS_DIR "Folder where your Docker projects live" "$DEFAULT_DOCKERS_DIR"
+DOCKERS_DIR=${DOCKERS_DIR/#\~/$HOME}
+while :; do
+  ask TEMPLATE_DIR "Template project to copy files from (press Enter for the default)" "$DOCKERS_DIR/default"
+  TEMPLATE_DIR=${TEMPLATE_DIR/#\~/$HOME}
+  # A bare name like "default" means a folder inside the Dockers folder
+  [[ $TEMPLATE_DIR == /* ]] || TEMPLATE_DIR="$DOCKERS_DIR/$TEMPLATE_DIR"
+  [[ -d $TEMPLATE_DIR ]] && break
+  warn "Template folder not found: $TEMPLATE_DIR"; TEMPLATE_DIR=''
 done
 ask SITE_TITLE "Site title" "$PROJECT"
 while :; do
