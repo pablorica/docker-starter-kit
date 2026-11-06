@@ -44,6 +44,7 @@ TEMPLATE_FILES=(
   "nginx.conf.staging:nginx.conf.staging"
   "docker_sage:docker"
   "docs/SAGE.md:docs/SAGE.md"
+  "docs/PostCSS.md:docs/PostCSS.md"
 )
 
 # Custom Vite config, copied into the new theme after Sage is installed

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
+## [0.6.3]- 2026-11-06
+
+### Changed
+- `docs/PostCSS.md`: rewritten for Sage 11 + Tailwind 4. No `postcss.config.js` or extra packages needed; custom CSS imported in `app.css` inside cascade layers; standard CSS nesting; migration checklist and troubleshooting.
+- `docs/SAGE.md`: new "Custom CSS (PostCSS)" section linking to `docs/PostCSS.md`.
+- `new-wp-sage.sh`: also copies `docs/PostCSS.md` into new projects.
+
 ## [0.6.2]- 2026-11-06
 
 ### Changed

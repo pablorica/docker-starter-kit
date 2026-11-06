@@ -240,6 +240,26 @@ If you're reusing a `tailwind.config.cjs` from an older project:
 
 ---
 
+## Custom CSS (PostCSS)
+
+You can add your own CSS in `.pcss` files in `resources/css/pcss/` **without** a `postcss.config.js` or any extra packages. Tailwind 4 already handles `@import`, nesting and vendor prefixes.
+
+The short version:
+
+```css
+/* resources/css/app.css */
+@import "./pcss/assets/globals.pcss" layer(base);
+@import "./pcss/layout/header.pcss" layer(components);
+```
+
+- Import every file **inside a layer** (`layer(base)` or `layer(components)`). Otherwise your custom CSS overrides Tailwind's utility classes.
+- Write standard CSS: `/* */` comments, `@import` instead of `@use`, and full BEM selectors (`.card__title`, not `&__title`).
+- Don't add `@tailwindcss/postcss`, `postcss-import` or `autoprefixer`. They're no longer needed, and `@tailwindcss/postcss` would process Tailwind twice.
+
+👉 Full guide, including a checklist for moving old `.pcss` / `.scss` files: **[PostCSS.md](PostCSS.md)**
+
+---
+
 ## Fonts
 
 The app includes an empty `resources/fonts/` directory for any custom fonts you want to include in your theme.
