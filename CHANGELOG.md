@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
+## [0.6.0]- 2026-11-06
+
+### Added
+- `new-wp-sage.sh`: interactive script that creates a new local WordPress + Sage project on Docker from the `default` template.
+  - Asks for project slug, site title, theme name, ports, MySQL passwords, production domain, WordPress admin details, Sage version and GitHub repository.
+  - Suggests the next free ports from existing projects in `~/Dockers` (SSL +1, phpMyAdmin = SSL + 100, Node = SSL − 3200) and warns if a port is busy.
+  - Generates passwords when left blank. Passwords are written to `.env` in single quotes so characters like `$`, `&` and `%` work.
+  - Creates the mkcert certificates, copies the template files and writes `.env` (slug, theme, ports, passwords, `CADDY_PRODUCTION_DOMAIN`).
+  - Starts the Docker stack and waits until MySQL accepts the WordPress user.
+  - Optionally installs WordPress with WP-CLI and sets "Discourage search engines".
+  - Installs Sage as the theme (removes its developer files), runs Composer and activates the theme.
+  - Optionally connects the project to GitHub and pushes, keeping files already in the remote (e.g. LICENSE). Stops and asks before committing if `.env` or the certificate key isn't ignored by `.gitignore`.
+  - Optionally starts the Node dev server at the end.
+  - Every question can be answered in advance with an environment variable (e.g. `PROJECT=foo ./new-wp-sage.sh`).
+- `README-new-wp-sage.md`: documentation for the script (requirements, questions, steps, defaults, troubleshooting), plus the full manual installation guide.
+
+### Security
+- No passwords or tokens are stored in the script. The GitHub instructions use SSH or `gh auth` instead of access tokens in URLs.
+
 ## [0.5.1] - 2026-07-28
 
 ### Updated

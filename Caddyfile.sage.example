@@ -1,0 +1,79 @@
+# Caddyfile — LOCAL development (mkcert TLS, explicit port :8080)
+#
+# All three hostnames share ONE mkcert certificate AND one HTTPS port.
+# The hostnames comes from Caddy's environment as {$CADDY_HOSTNAME} (fed from .env
+# via docker-compose), with default.localhost as the fallback default.
+# The port comes from Caddy's environment as {$WORDPRESS_SSL_PORT} (fed from .env
+# via docker-compose), with 8080 as the fallback default.
+#
+# Generate the cert once from the project root:
+#   mkcert -install
+#   mkdir -p certs
+#   mkcert -cert-file certs/local.pem -key-file certs/local-key.pem \
+#     default.localhost \
+#     pma.default.localhost
+#
+# *.localhost resolves to 127.0.0.1 in Chrome/Firefox. On Safari, or if it fails,
+# add to /etc/hosts:
+#   127.0.0.1  default.localhost pma.default.localhost
+
+# --- WordPress  ---
+https://{$CADDY_HOSTNAME:default.localhost}:{$WORDPRESS_SSL_PORT:8080} {
+	tls /etc/caddy/certs/local.pem /etc/caddy/certs/local-key.pem
+	encode zstd gzip
+
+  # --- Uploads routing from production server ---
+  # Everything under uploads (match all medial)
+  #@remoteUploads path /wp-content/uploads/*
+
+  # Proxy uploads to production
+  #handle @remoteUploads {
+  #  root * /var/www/html
+  #  # Optional: allow <img> hotlinking to work from your dev pages
+  #  # (not needed for plain <img>, but helpful for JS fetch/CORS)
+  #  header Access-Control-Allow-Origin *
+  #
+  #  # Serve locally if the file exists on disk...
+  #  @localFile file
+  #  handle @localFile {
+  #    # 'file_server' is the handler that serves static files straight off disk
+  #    file_server
+  #  }
+  #  # ...otherwise fall back to production
+  #  handle {
+  #    reverse_proxy https://{$CADDY_PRODUCTION_DOMAIN:default.com} {
+  #      # Make upstream treat it as first-party
+  #      header_up Host {$CADDY_PRODUCTION_DOMAIN:default.com}
+  #      # This line is deprecated because reverse_proxy already sets X-Forwarded-Host to the incoming host by default.
+  #      #header_up X-Forwarded-Host {host}
+  #      header_up X-Forwarded-Proto https
+  #      # Strip any referrer to avoid hotlink rules
+  #      header_up -Referer
+  #    }
+  #  }
+  #}
+
+  # Sage: Vite HMR + internal module paths
+  @vite {
+    path /@vite/*
+    path /@id/*
+    path /@fs/*
+    path /resources/*
+    path /node_modules/*
+  }
+  reverse_proxy @vite {$NODE_CONTAINER:sage_node}:{$NODE_PORT:5173}
+
+  # Sage is requesting via your base path:
+  @vitebase path {$VITE_PATH:/wp-content/themes/codigo/public/build/*}
+  reverse_proxy @vitebase {$NODE_CONTAINER:sage_node}:{$NODE_PORT:5173}
+
+  # Everything else → local WordPress
+  reverse_proxy wordpress:80
+}
+
+# --- phpMyAdmin ---
+https://pma.{$CADDY_HOSTNAME:default.localhost}:{$WORDPRESS_SSL_PORT:8080} {
+	tls /etc/caddy/certs/local.pem /etc/caddy/certs/local-key.pem
+	encode zstd gzip
+	reverse_proxy phpmyadmin:80
+}

@@ -40,7 +40,7 @@ services:
         fi
 
         # Start watcher
-        npm run watch
+        npm run dev
   composer:
     profiles: ["tools"]
     build:
@@ -73,7 +73,7 @@ services:
 
   wordpress:
     # image: wordpress:latest > do not use latest to avoid unexpected breaking changes, pin to a specific version
-    image: wordpress:php8.3-apache
+    image: wordpress:php8.5-apache
     container_name: ${WORDPRESS_CONTAINER}
     depends_on:
       mysql:
@@ -115,7 +115,7 @@ services:
 
   wpcli:
     # image: wordpress:cli  -> do not use latest to avoid unexpected breaking changes, pin to a specific version
-    image: wordpress:cli-php8.3
+    image: wordpress:cli-php8.5
     container_name: ${WPCLI_CONTAINER}
     depends_on: [mysql, wordpress]
     working_dir: /var/www/html

@@ -2,7 +2,7 @@
 A clean starter application you can copy/paste and reuse for Docker projects. its ready for Wordpress and Laravel
 
 
-[![version](https://img.shields.io/badge/version-0.5.1-blue.svg)](https://semver.org)
+[![version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://semver.org)
 
 
 ## Staging Server
@@ -62,6 +62,11 @@ https://default.codigo.co.uk/uploads.tar.gz
 ---
 
 ## Installation
+
+### Automated script to scaffold a new local WordPress + Sage project on Docker
+
+[New WordPress + Sage project on Docker](docs/README-new-wp-sage.md)
+
 
 ### Docker Installation
 

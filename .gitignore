@@ -101,8 +101,8 @@ yarn.lock
 # Wordpress
 # -------------------------
 
-!docker-compose.yml
-!docker-compose.remote.yml
+!docker-compose.wordpress.yml
+!docker-compose.wordpress.remote.yml
 
 # Track the "wordpress" directory  and the  "docker_sage" folders
 !wordpress
@@ -126,14 +126,14 @@ wordpress/wp-content/mu-plugins/*
 wordpress/wp-content/plugins/*
 wordpress/wp-content/themes/*
 
-
-
+# Track the bash script to scaffold a new local WordPress + Sage project on Docker,
+!new-wp-sage.sh
 
 # -------------------------
 # Statamic
 # -------------------------
 
-# track the statamic docekr config files
+# track the statamic docker config files
 !docker-compose.statamic.example.yml
 !docker-compose.statamic.override.yml
 !docker-compose.statamic.remote.yml
