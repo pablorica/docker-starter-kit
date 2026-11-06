@@ -22,8 +22,10 @@ On your machine:
 |---|---|
 | Docker + Docker Compose v2 | `docker compose version` must work and Docker must be running |
 | mkcert | Run `mkcert -install` **once** per machine so browsers trust the local certificates |
-| git | Used to clone Sage and to push to GitHub |
+| git | Used to push to GitHub |
 | perl | Used to edit `.env` safely (preinstalled on macOS and most Linux) |
+
+Composer and WP-CLI **don't** need to be installed locally. They run through Docker, using the `composer` (profile `tools`) and `wpcli` services in `docker-compose.yml`.
 
 You also need:
 
@@ -55,7 +57,7 @@ Any question can be answered in advance with an environment variable. The script
 PROJECT=skelly-couch SITE_TITLE="Skelly & Couch" PROD_DOMAIN=beta.skelly-couch.tm-studio.co.uk ./new-wp-sage.sh
 ```
 
-Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `SAGE_REF`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
+Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `SAGE_VERSION`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
 
 ---
 
@@ -78,7 +80,7 @@ Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`,
 | WP admin user | `pablo.rica` | WordPress admin account |
 | WP admin password | generated if blank | WordPress admin account |
 | WP admin email | `pablo@codigo.co.uk` | WordPress admin account |
-| Sage branch/tag | blank = latest | Pins a specific Sage version if needed |
+| Sage version constraint | blank = latest stable | Pins a Sage version if needed, e.g. `11.*` |
 | Push to GitHub? | yes | Connects the project to a repository |
 | GitHub user/organisation | `pablorica` | Builds the suggested repository URL |
 | Repository URL | `git@github.com:<org>/<slug>.git` | `origin` remote |
@@ -100,17 +102,16 @@ The script warns you when a port is already in use. Passwords can't contain a si
    - replaces ports `8443`, `8081` and `5173` with the new ones
    - sets `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `WORDPRESS_THEMENAME` and `CADDY_PRODUCTION_DOMAIN`
    - writes passwords in single quotes, so characters like `$`, `&` and `%` work. Docker Compose would otherwise read `$m` as a variable.
-5. **Starts Docker.** It runs `docker compose pull`, `docker compose up -d` and `docker compose ps`, then waits until MySQL accepts the WordPress database user.
-6. **Installs WordPress** (optional). It downloads WP-CLI inside the `wordpress` container, then runs `wp core install` and sets **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
-7. **Installs Sage.** It clones Sage, removes the Sage developer files (`.git`, `.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and moves it into `wordpress/wp-content/themes/<theme>`, replacing any existing folder with that name. It uses `sudo` only if the folder belongs to the container user.
-8. **Composer.** It runs `docker compose --profile tools run --rm composer update -W` to create `vendor/`.
-9. **Activates the theme** with WP-CLI.
-10. **GitHub** (optional):
+5. **Starts Docker.** It pulls the images, then starts `mysql`, `wordpress`, `phpmyadmin` and `caddy` (Caddy is in the `dev` profile, so it's started by name). Then it waits until MySQL accepts the WordPress database user.
+6. **Installs WordPress** (optional). It uses the `wpcli` service to run `wp core install` and set **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
+7. **Installs Sage with Composer.** It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`). It uses `sudo` only if a file belongs to the container user.
+8. **Activates the theme** with the `wpcli` service.
+9. **GitHub** (optional):
     - runs `git init` and adds the remote
     - if the repository already has commits (e.g. a LICENSE), adopts its history and adds any files that are missing locally, without overwriting your files
     - stops and asks before committing if `.env` or `certs/local-key.pem` isn't ignored by `.gitignore`
     - commits and runs `git push -u origin <branch>`
-11. **Summary.** It prints the URLs and credentials, then starts the Node dev server in the foreground (stop it with `Ctrl+C`).
+10. **Summary.** It prints the URLs and credentials, then starts the Node dev server in the foreground (stop it with `Ctrl+C`).
 
 If a command fails, the script stops and shows the line that failed.
 
@@ -214,15 +215,19 @@ CADDY_PRODUCTION_DOMAIN=<prod-domain>
 
 From `~/Dockers/<project>`:
 
+`caddy` and `node` are in the `dev` profile because they're only used locally. On staging and production, Nginx or Apache does the proxying and the compiled assets are uploaded. The template's `.env` sets `COMPOSE_PROFILES=dev`, so locally a plain `docker compose up -d` starts **everything, including Node**.
+
+During the first install, the theme doesn't exist yet, so start the services **by name** to keep Node out until the theme is in place:
+
 ```bash
 # Pull the latest images
-docker compose pull
+docker compose --profile dev pull
 
 # Start
-docker compose up -d
+docker compose --profile dev up -d mysql wordpress phpmyadmin caddy
 
 # Check it's running
-docker compose ps
+docker compose --profile dev ps
 ```
 
 Expected output:
@@ -254,17 +259,14 @@ docker compose exec mysql mysql -u<db-user> -p -e "SELECT 1;" <project>
 - Username / password / email
 - **Discourage search engines from indexing this site** → checked
 
-**Or with WP-CLI**, as the script does:
+**Or with WP-CLI** through the `wpcli` service, as the script does:
 
 ```bash
-docker compose exec -u www-data wordpress sh -c \
-  'curl -fsSL -o /tmp/wp-cli.phar https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar'
-
-docker compose exec -u www-data wordpress php /tmp/wp-cli.phar core install \
+docker compose run --rm wpcli core install \
   --url="https://<project>.localhost:<ssl-port>" --title="<Site title>" \
   --admin_user="<user>" --admin_password="<password>" --admin_email="<email>" --skip-email
 
-docker compose exec -u www-data wordpress php /tmp/wp-cli.phar option update blog_public 0
+docker compose run --rm wpcli option update blog_public 0
 ```
 
 #### Check phpMyAdmin
@@ -273,32 +275,35 @@ docker compose exec -u www-data wordpress php /tmp/wp-cli.phar option update blo
 
 ### 2. Sage
 
-#### Clone Sage into the themes folder
+#### Create the theme with Composer (through Docker)
+
+`composer create-project` downloads the latest **stable** Sage release into a folder with your theme name and installs `vendor/`. You don't need a separate `composer update` step.
 
 ```bash
-cd ~/Dockers/<project>/wordpress/wp-content/themes
+cd ~/Dockers/<project>
 
-git clone https://github.com/roots/sage
+# Remove the old theme folder (if it exists): create-project needs a missing or empty folder
+rm -rf wordpress/wp-content/themes/<theme>
 
-# Remove the old theme folder (if it exists)
-rm -R <theme>
-
-# Rename "sage" to the theme name
-mv sage <theme>
+# Create the theme (runs in the themes folder, as your user so files aren't owned by root)
+docker compose --profile tools run --rm --user "$(id -u):$(id -g)" \
+  -e COMPOSER_HOME=/tmp/composer \
+  -w /var/www/html/wp-content/themes \
+  composer create-project --no-interaction roots/sage <theme>
 ```
 
-#### Remove the Sage developer files
+To pin a Sage version, add a constraint at the end, e.g. `... create-project --no-interaction roots/sage <theme> "11.*"`.
+
+#### Remove the Sage developer files (if present)
+
+`create-project` doesn't keep a `.git` folder, but some of these files may still be there:
 
 ```bash
 cd ~/Dockers/<project>/wordpress/wp-content/themes/<theme>
-sudo rm -R .git
-sudo rm -R .github
-sudo rm .editorconfig
-sudo rm .gitattributes
-sudo rm .gitignore
+rm -rf .git .github .editorconfig .gitattributes .gitignore
 ```
 
-#### Install the `vendor/` folder
+#### Update Composer packages later (optional)
 
 ```bash
 cd ~/Dockers/<project>
@@ -319,7 +324,7 @@ In wp-admin, go to **Appearance → Themes** and activate `<theme>`. Then open `
 With WP-CLI:
 
 ```bash
-docker compose exec -u www-data wordpress php /tmp/wp-cli.phar theme activate <theme>
+docker compose run --rm wpcli theme activate <theme>
 ```
 
 ### 3. GitHub
@@ -372,12 +377,13 @@ git push
 ```bash
 cd ~/Dockers/<project>
 
-docker compose up -d                         # start the stack
-docker compose down                          # stop the stack
-docker compose ps                            # status
+docker compose --profile dev up -d mysql wordpress phpmyadmin caddy   # start the stack
+docker compose --profile dev up node         # Vite dev server (foreground)
+docker compose --profile dev down            # stop everything
+docker compose --profile dev ps              # status
 docker compose logs -f wordpress             # follow logs (wordpress, mysql, caddy, phpmyadmin)
-docker compose --profile dev up node         # Vite dev server
-docker compose --profile tools run --rm composer update -W   # composer
+docker compose --profile tools run --rm composer update -W   # Composer (any composer command)
+docker compose run --rm wpcli plugin list    # WP-CLI (any wp command)
 ```
 
 ---
@@ -392,6 +398,9 @@ docker compose --profile tools run --rm composer update -W   # composer
 | Automatic WordPress install failed | Finish it in the browser at `https://<project>.localhost:<ssl-port>/`. The rest of the script continues. |
 | "`KEY` not found in .env" | `.env.example` doesn't have that variable. Add it to `.env` by hand. |
 | `Permission denied` in the themes folder | The folder belongs to the container user. Use `sudo` (the script does this automatically). |
+| `vendor/` owned by root after `composer update` | On Linux, uncomment `user: "${UID:-1000}:${GID:-1000}"` in the `composer` service, or add `--user "$(id -u):$(id -g)"` to the command. |
+| Composer complains about the PHP version | The `composer` image's PHP differs from the `wordpress` one. Add `--ignore-platform-reqs`, as long as the `wordpress` container meets Sage's requirements. |
+| Caddy isn't running after `docker compose up -d` | It's in the `dev` profile. Check that `.env` has `COMPOSE_PROFILES=dev`, or start it with `docker compose --profile dev up -d caddy`. |
 | Push failed | Check that GitHub access works: `ssh -T git@github.com` or `gh auth status`. Then run `git push -u origin main`. |
 
 ---

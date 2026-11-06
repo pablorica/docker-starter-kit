@@ -1,34 +1,66 @@
 
 # SAGE (11)
 
-Instructions to install [sage](https://github.com/roots/sage?tab=readme-ov-file) 
+Instructions to install and work with [Sage](https://github.com/roots/sage?tab=readme-ov-file).
 
 [![version](https://img.shields.io/badge/version-11-blue.svg)](https://semver.org)
 
-If you need informaton of prior versions of SAGE, check [SAGE_10.md](SAGE_10.md)
+If you need information about earlier versions of Sage, check [SAGE_10.md](SAGE_10.md).
 
-## Installation 
+> **All Composer, Node and WP-CLI commands run through Docker.** You don't need them installed locally. The services are defined in `docker-compose.yml`:
+>
+> | Service | Profile | Used for | Runs in |
+> |---|---|---|---|
+> | `composer` | `tools` | `composer …` | the theme folder (`wp-content/themes/${WORDPRESS_THEMENAME}`) |
+> | `node` | `dev` | `npm …` / Vite | the theme folder |
+> | `wpcli` | — | `wp …` (and `wp acorn …`) | the WordPress root |
 
+---
 
-The theme is based in Sage 11, which is a powerful WordPress starter theme that uses Laravel Blade templating and Vite for asset management.
+## Installation
 
+The theme is based on Sage 11, a WordPress starter theme that uses Laravel Blade for templates, Vite for assets and Tailwind CSS 4 for styles.
+
+> `new-wp-sage.sh` runs these steps for you when it creates a new project. Use this section to run them by hand.
+
+### Create the theme with Composer
+
+`composer create-project` installs the latest **stable** Sage release, including `vendor/`. The theme folder must not exist or must be empty.
 
 ```bash
-cd wordpress-root/wp-content/themes
+cd ~/Dockers/<project>
 
-$ composer create-project roots/sage codigo
+docker compose --profile tools run --rm --user "$(id -u):$(id -g)" \
+  -e COMPOSER_HOME=/tmp/composer \
+  -w /var/www/html/wp-content/themes \
+  composer create-project --no-interaction roots/sage codigo
+```
 
+```
   Creating a "roots/sage" project at "./codigo"
   Installing roots/sage (11.0.4)
     - Downloading roots/sage (11.0.4)
     - Installing roots/sage (11.0.4): Extracting archive
   Created project in ./codigo
+```
 
-## Install JS libraries
+To pin a version, add a constraint at the end, e.g. `... roots/sage codigo "11.*"`.
 
-docker compose run --rm node sh -lc "cd /workspace/wp-content/themes/codigo && rm -rf node_modules package-lock.json && npm i"
+Then remove the Sage developer files, if they're there:
+
+```bash
+cd wordpress/wp-content/themes/codigo
+rm -rf .git .github .editorconfig .gitattributes .gitignore
+```
+
+### Install the JS libraries and build
+
+```bash
+docker compose run --rm node sh -lc "rm -rf node_modules package-lock.json && npm i"
 docker compose run --rm node sh -lc "npm run build"
+```
 
+```
   > build
   > vite build
 
@@ -43,63 +75,91 @@ docker compose run --rm node sh -lc "npm run build"
   public/build/assets/app-BvRk9kiK.js             0.00 kB │ gzip: 0.02 kB
   public/build/assets/editor-Dqo-zVGR.js          0.02 kB │ gzip: 0.04 kB
 
-  [PLUGIN_TIMINGS] Your build spent significant time in plugin `@tailwindcss/vite:generate:build`. See https://rolldown.rs/options/checks#plugintimings for more details.
-
   ✓ built in 3.25s
 ```
 
+The `node` service already runs from the theme folder, so you don't need to `cd` into it.
 
- - [Install](https://roots.io/sage/)
- - [Docs](https://roots.io/sage/docs/installation/)
+### Development server
 
+```bash
+docker compose --profile dev up node
+```
+
+It installs the dependencies if `package-lock.json` has changed, then runs `npm run dev` (Vite with hot reload through Caddy).
+
+- [Install](https://roots.io/sage/)
+- [Docs](https://roots.io/sage/docs/installation/)
 
 ---
 
 ## Vite
 
-###  Update `vite.config.js` with the theme base path and input files:
+### Environment variables
+
+`vite.config.js` reads its settings from environment variables. The `node` service in `docker-compose.yml` sets them from `.env`:
+
+| Vite variable | From `.env` | Example | Used for |
+|---|---|---|---|
+| `APP_URL` | `WORDPRESS_HOME` | `https://skelly-couch.localhost:8465` | `server.origin` (asset URLs during development) |
+| `APP_HOST` | `CADDY_HOSTNAME` | `skelly-couch.localhost` | Hot-reload WebSocket host |
+| `APP_PORT` | `WORDPRESS_SSL_PORT` | `8465` | Hot-reload WebSocket port (the browser connects to Caddy) |
+| `NODE_PORT` | `NODE_PORT` | `5265` | Vite dev server port inside the container |
+| `VITE_PATH` | `VITE_PATH` | `/wp-content/themes/codigo/public/build/` | `base` (public path of the built assets) |
+
+> Sage's default `base` is `/app/themes/sage/public/build/`, which is for **Bedrock** sites. In this setup it must be `/wp-content/themes/<theme>/public/build/`.
+
+### `vite.config.js`
+
+Replace the default `vite.config.js` with this one:
 
 ```js
 // wordpress/wp-content/themes/codigo/vite.config.js
-import { defineConfig } from 'vite'
+import path from 'node:path';
+import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
-import laravel from 'laravel-vite-plugin'
+import laravel from 'laravel-vite-plugin';
 import { wordpressPlugin, wordpressThemeJson } from '@roots/vite-plugin';
 
-// Set APP_URL if it doesn't exist for Laravel Vite plugin
-if (! process.env.APP_URL) {
-  process.env.APP_URL = 'http://example.test';
-}
-if (! process.env.APP_HOST) {
-  process.env.APP_HOST = 'example.test';
-}
+/*
+ * Environment variables, set by the `node` service in docker-compose.yml (from .env):
+ *
+ *   APP_URL    <- WORDPRESS_HOME       e.g. https://skelly-couch.localhost:8465
+ *   APP_HOST   <- CADDY_HOSTNAME       e.g. skelly-couch.localhost
+ *   APP_PORT   <- WORDPRESS_SSL_PORT   e.g. 8465  (port the browser uses, through Caddy)
+ *   NODE_PORT  <- NODE_PORT            e.g. 5265  (Vite dev server inside the container)
+ *   VITE_PATH  <- VITE_PATH            e.g. /wp-content/themes/codigo/public/build/
+ *
+ * The fallbacks are only used when Vite runs outside Docker.
+ */
+const themeName = path.basename(process.cwd()); // npm scripts run from the theme folder
 
-if (! process.env.VITE_BASE) {
-  process.env.VITE_BASE = '/app/themes/sage/public/build/';
-}
+const env = {
+  appUrl:   process.env.APP_URL   || 'http://example.test',
+  appHost:  process.env.APP_HOST  || 'example.test',
+  appPort:  Number(process.env.APP_PORT  || 8080),
+  nodePort: Number(process.env.NODE_PORT || 5173),
+  base:     process.env.VITE_PATH || `/wp-content/themes/${themeName}/public/build/`,
+};
 
-if (! process.env.VITE_SERVERPORT) {
-  process.env.VITE_SERVERPORT = 3000;
-}
-if (! process.env.VITE_CLIENTPORT) {
-  process.env.VITE_CLIENTPORT = 8800;
-}
-
+// laravel-vite-plugin reads APP_URL from the environment
+process.env.APP_URL = env.appUrl;
 
 export default defineConfig({
-  base: process.env.VITE_BASE,
+  base: env.base,
+
   server: {
-    host: '0.0.0.0',
-    port: process.env.VITE_SERVERPORT,
+    host: '0.0.0.0',          // listen inside the container
+    port: env.nodePort,
     strictPort: true,
-    origin: process.env.APP_URL,
+    origin: env.appUrl,       // asset URLs go through Caddy
     hmr: {
-      host: process.env.APP_HOST,
       protocol: 'wss',
-      clientPort: process.env.VITE_CLIENTPORT,
-      path: '/_vite/ws',
+      host: env.appHost,
+      clientPort: env.appPort, // the browser connects to Caddy, not to Node directly
     },
   },
+
   plugins: [
     tailwindcss(),
     laravel({
@@ -110,20 +170,22 @@ export default defineConfig({
         'resources/js/editor.js',
       ],
       refresh: true,
+      // Copy and version images and fonts so Blade can use Vite::asset()
       assets: ['resources/images/**', 'resources/fonts/**'],
     }),
 
     wordpressPlugin(),
 
-    // Generate the theme.json file in the public/build/assets directory
-    // based on the Tailwind config and the theme.json file from base theme folder
+    // Generate public/build/assets/theme.json from the Tailwind theme
+    // (the @theme variables in your CSS) and the theme's base theme.json
     wordpressThemeJson({
       disableTailwindColors: false,
       disableTailwindFonts: false,
       disableTailwindFontSizes: false,
-      //disableTailwindBorderRadius: false,
+      disableTailwindBorderRadius: false,
     }),
   ],
+
   resolve: {
     alias: {
       '@scripts': '/resources/js',
@@ -132,20 +194,61 @@ export default defineConfig({
       '@images': '/resources/images',
     },
   },
-})
+});
 ```
+
+Notes:
+
+- **`assets`** must stay in `laravel()`. Without it, `Vite::asset('resources/images/...')` in Blade won't find images and fonts in the production build.
+- **Ports** come from the environment as text, so they're converted with `Number()`.
+- **`disableTailwindBorderRadius`** adds your `--radius-*` values to the generated `theme.json`. If a build complains about this option, your installed `@roots/vite-plugin` is older. Update it or remove the line.
+- **Hot reload doesn't connect?** Check that the `Caddyfile` sends the Vite requests (`VITE_PATH` and the WebSocket) to the `node` container on `NODE_PORT`.
+- **File changes not detected on macOS?** Add `CHOKIDAR_USEPOLLING: "true"` to the `node` service's `environment` in `docker-compose.yml`.
+
+---
+
+## Tailwind CSS 4
+
+Sage 11 uses **Tailwind CSS 4**, which is configured **in CSS**, not in a `tailwind.config.js` file.
+
+- **You don't need `tailwind.config.js` / `tailwind.config.cjs` / `tailwind.site.js`.** Tailwind 4 doesn't load them automatically.
+- Design tokens (colours, fonts, font sizes, breakpoints, radii…) go in an **`@theme`** block in `resources/css/base.css`. That's also where `wordpressThemeJson` reads them to build the Gutenberg `theme.json`.
+- `base.css` is imported in `app.css`:
+
+  ```css
+  @import './base.css';
+  ```
+
+### Moving a Tailwind 3 config to Tailwind 4
+
+If you're reusing a `tailwind.config.cjs` from an older project:
+
+| Tailwind 3 (`tailwind.config.cjs`) | Tailwind 4 (CSS) |
+|---|---|
+| `theme.colors`, `fontFamily`, `fontSize`, `screens`, `zIndex`, `animation`, `keyframes` | `@theme { --color-walnut: #B4695F; --font-sans: …; --text-lg: …; --breakpoint-2xl: 1792px; --animate-appearsin: …; @keyframes appearsIn { … } }` |
+| Replacing a whole default scale (e.g. `colors: {…}` instead of `extend`) | `@theme { --color-*: initial; … }` |
+| `extend: {…}` | Just add the variables to `@theme` |
+| `plugin(({ addBase }) => …)` | `@layer base { … }` |
+| `plugin(({ addComponents }) => …)` (`.container` etc.) | `@layer components { … }` or `@utility container { … }` |
+| `plugin(({ addVariant }) => …)` | `@custom-variant mobile-only (@media (width < theme(--breakpoint-sm)));` |
+| `@media screen(md)` | `@media (width >= theme(--breakpoint-md))` |
+| `theme('colors.chalk')` in JS | `var(--color-chalk)` in CSS |
+| `presets: [require('tailwindcss/defaultConfig')]` | Not needed: Tailwind 4 includes its defaults |
+| `content: [...]` | Not needed: Tailwind 4 finds your templates automatically |
+
+> As a temporary measure, you can still load an old JS config with `@config "../../tailwind.config.cjs";` in `app.css`. Tailwind 3-only parts (`presets`, `screen()`, …) won't work there, though, so it's better to move everything to CSS.
 
 ---
 
 ## Fonts
 
-The app includes an empty `resources/fonts/` directory for you to use for any custom fonts you'd like to include in your theme.
+The app includes an empty `resources/fonts/` directory for any custom fonts you want to include in your theme.
 
-### Step 1: Add Your Font File
+### Step 1: Add your font file
 
-The first step is to add your `.woff2` font file to the `resources/fonts/` directory. Since `.woff2` has excellent browser support, you likely won't need any other formats.
+Add your `.woff2` font file to the `resources/fonts/` directory. `.woff2` has excellent browser support, so you likely won't need other formats.
 
-For this example, we’ll use **Public Sans**, downloaded via [google-webfonts-helper](https://google-webfonts-helper.herokuapp.com/), a handy tool for grabbing font files and CSS snippets from Google Fonts.
+For this example, we'll use **Public Sans**, downloaded with [google-webfonts-helper](https://google-webfonts-helper.herokuapp.com/), a handy tool for getting font files and CSS snippets from Google Fonts.
 
 Project structure:
 
@@ -153,6 +256,7 @@ Project structure:
 resources
 ├── css
 │   ├── app.css
+│   ├── base.css         # Design tokens (@theme)
 │   ├── fonts.css        # Create this file
 │   └── editor.css
 ├── fonts
@@ -164,14 +268,14 @@ resources
 
 ### Step 2: Add the CSS
 
-You can place the font CSS wherever you prefer, but we recommend creating a `css/fonts.css` file and importing it into both `app.css` and `editor.css`:
+You can put the font CSS wherever you prefer, but we recommend creating a `css/fonts.css` file and importing it into both `app.css` and `editor.css`:
 
 ```css
 /* In app.css and editor.css */
 @import './fonts.css';
 ```
 
-Then, define your `@font-face` in `fonts.css`:
+Then define your `@font-face` in `fonts.css`:
 
 ```css
 @font-face {
@@ -183,9 +287,9 @@ Then, define your `@font-face` in `fonts.css`:
 }
 ```
 
-### Step 3: Add the Font to Tailwind
+### Step 3: Add the font to Tailwind
 
-Finally, update your Tailwind theme by adding the font to your `base.css`:
+Add the font to the Tailwind theme in `base.css`:
 
 ```css
 @theme {
@@ -193,88 +297,82 @@ Finally, update your Tailwind theme by adding the font to your `base.css`:
 }
 ```
 
-Import  `base.css` in `app.css`
-
-```css
-@import './base.css';
-```
-
-For more details on customizing fonts with Tailwind, see the [Tailwind CSS documentation](https://tailwindcss.com/docs/font-family).
+For more details on customising fonts with Tailwind, see the [Tailwind CSS documentation](https://tailwindcss.com/docs/font-family).
 
 ### Font sizes
 
-We are going to use our own font sizes set across Tailwind CSS and Gutenberg editor. Our goal is to:
+We use our own font sizes in both Tailwind CSS and the Gutenberg editor. Our goals are to:
 
-- Define font sizes once in CSS
-- Let Tailwind use `var(--text-*)` tokens
-- Automatically generate a `theme.json` fontSizes for Gutenberg blocks
+- define font sizes once in CSS
+- let Tailwind use the `--text-*` tokens
+- automatically generate the `theme.json` font sizes for Gutenberg blocks
 
-#### 1. Define font sizes in `base.css` and  `tailwind.site.js`
+#### 1. Set the base font size
 
-In `tailwind.site.js` declare the base font size as a CSS variable:
-
-```js
-export default {
-  plugins: [
-    plugin(function({ addBase, theme }) {
-      addBase({
-        ':root': {
-          // Fluid typography from 1 rem to 1.2 rem with fallback to 26px.
-          fontSize: '24px', //<- Base font size. The rem values are calculated based on this.
-          letterSpacing: '0',
-          lineHeight: '26px', // calc(1.5 / 1),
-          fontWeight: '300',
-
-          // Safari resize fix.
-          minHeight: '0vw',
-        },
-      })
-    }),],
-};
-```
-
-In `resources/css/base.css`, declare your design tokens as CSS variables (you can add media breakpoint queries for responsive font sizes):
+In `resources/css/base.css`, set the root font size and other base styles. This replaces the `addBase()` plugin from the old `tailwind.site.js`:
 
 ```css
-@theme {
-  ...
-  --text-base: clamp(1rem,1.25vw,1rem);
-}
 @layer base {
   :root {
-    @media (min-width: theme("screens.lg")) {
-      --text-base: 1.25vw; /* 24px at 1920px */
-    }
-    ...
+    font-size: 24px;      /* Base font size. The rem values are calculated from this. */
+    letter-spacing: 0;
+    line-height: 26px;
+    font-weight: 300;
+
+    /* Safari resize fix */
+    min-height: 0vw;
   }
 }
 ```
 
-These are the default values
+#### 2. Define the font sizes
+
+In the same file, declare your font sizes as `--text-*` variables. You can use media queries for responsive sizes:
+
+```css
+@theme {
+  /* ... */
+  --text-base: clamp(1rem, 1.25vw, 1rem);
+}
+
+@layer base {
+  :root {
+    @media (width >= theme(--breakpoint-lg)) {
+      --text-base: 1.25vw; /* 24px at 1920px */
+    }
+    /* ... */
+  }
+}
+```
+
+These are the default values:
 
 ```css
 @theme {
   --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
   --text-base: 1rem;
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
-  --text-2xl: 1.5rem
+  --text-2xl: 1.5rem;
   --text-3xl: 1.875rem;
-  --text-4xl: 2.25rem; 
+  --text-4xl: 2.25rem;
   --text-5xl: 3rem;
   --text-6xl: 3.75rem;
   --text-7xl: 4.5rem;
   --text-8xl: 6rem;
   --text-9xl: 8rem;
-  ...
+  /* ... */
 }
-  ```
+```
 
+To replace the whole scale instead of extending it, start the block with `--text-*: initial;`.
 
-#### 3. Add font sizes to Gutenberg
-In `themes/codigo/theme.json` edit the `settings.typography.fontSizes` section to display your custom colours in the Gutenberg color picker:
+#### 3. Add the font sizes to Gutenberg
 
-This is the default value
+In `themes/codigo/theme.json`, edit the `settings.typography.fontSizes` section to choose which font sizes appear in the Gutenberg editor.
+
+This is the default value:
 
 ```json
 {
@@ -351,43 +449,43 @@ This is the default value
 
 ## Colours
 
-We are going to use our own colour palette across Tailwind CSS and Gutenberg editor. Our goal is to:
+We use our own colour palette in both Tailwind CSS and the Gutenberg editor. Our goals are to:
 
-- Define colours once in CSS
-- Let Tailwind use `var(--color-*)` tokens
-- Automatically generate a `theme.json` colour palette for Gutenberg
+- define colours once in CSS
+- let Tailwind use the `--color-*` tokens
+- automatically generate the `theme.json` colour palette for Gutenberg
 
+### 1. Define the colours in `base.css`
 
-### 1. Define Colours in `base.css`
-
-In `resources/css/base.css`, declare your design tokens as CSS variables:
+In `resources/css/base.css`, declare your colours as `--color-*` variables in an `@theme` block. Tailwind creates utilities from them (`bg-beige`, `text-beige`, `border-beige`…) and `wordpressThemeJson` adds them to Gutenberg:
 
 ```css
-@layer base {
-  :root {
-    --color-beige:     #ECECE4;
-    ...
-  }
+@theme {
+  --color-beige: #ECECE4;
+  /* ... */
 }
 ```
 
-### 2. Clear Tailwind’s Colour Palette
+### 2. Clear Tailwind's colour palette
 
-In `tailwind.config.js` or `tailwind.site.js`, disable Tailwind’s default colours:
+To use **only** your colours and not Tailwind's default palette, start the block with `--color-*: initial;`:
 
-```js
-export default {
-  theme: {
-    colors: {}, // 👈 Important: allow Sage to use CSS variable colors instead
-  },
-  plugins: [],
-};
+```css
+@theme {
+  --color-*: initial; /* 👈 Remove Tailwind's default colours */
+
+  --color-black: #000;
+  --color-white: #fff;
+  --color-beige: #ECECE4;
+  /* ... */
+}
 ```
 
-This prevents Tailwind from injecting its default palette, allowing Sage to fully control the colour output.
+This replaces `theme: { colors: {} }` from the old `tailwind.config.js`. You don't need a JS config file.
 
 ### 3. Add colours to Gutenberg
-In theme.json edit the `settings.color.palette` section to display your custom colours in the Gutenberg color picker:
+
+In `theme.json`, edit the `settings.color.palette` section to choose which colours appear in the Gutenberg colour picker:
 
 ```json
 {
@@ -407,11 +505,12 @@ In theme.json edit the `settings.color.palette` section to display your custom c
 ```
 
 ### 4. Add colours to ACF
-If you’re using ACF, you can also add your colours to the ACF colour picker by editing `resources/js/acf-colors.js`:
+
+If you're using ACF, you can also add your colours to the ACF colour picker by editing `resources/js/acf-colors.js`:
 
 ```js
   acf.add_filter('color_picker_args', function (args, $field) {
-    /* Colours (must match with resources/css/app.css ) */
+    /* Colours (must match the @theme colours in resources/css/base.css) */
     args.palettes = [
       '#ECECE4', // Beige
       ...
@@ -420,49 +519,49 @@ If you’re using ACF, you can also add your colours to the ACF colour picker by
   });
 ```
 
-### 5. Rebuild the Theme
+### 5. Rebuild the theme
 
-Run the build process:
+Run the build:
 
 ```bash
-npm run build
+docker compose run --rm node sh -lc "npm run build"
 ```
 
 Sage will:
-- Parse your `base.css`
-- Extract `--color-*` variables
-- Generate `public/build/asses/theme.json` with a Gutenberg colour palette
+
+- read the Tailwind theme (the `@theme` variables in your CSS)
+- extract the `--color-*` variables
+- generate `public/build/assets/theme.json` with a Gutenberg colour palette
 
 ### 6. Using the colours in Tailwind and Gutenberg
 
-#### In Tailwind:
+#### In Tailwind
 
-Use the variables directly:
+Use the generated utilities:
 
 ```html
-<div class="bg-[var(--color-blue)] text-[var(--color-white)]">
+<div class="bg-blue text-white">
   Custom styled section
 </div>
 ```
 
-####  In Gutenberg:
+`var()` also works, e.g. `bg-(--color-blue)`, which is the Tailwind 4 shorthand for `bg-[var(--color-blue)]`.
 
-Open a block like Paragraph or Group and select from your custom colours in the editor UI — no PHP or JSON editing required!
+#### In Gutenberg
 
+Open a block like Paragraph or Group and choose one of your colours in the editor. No PHP or JSON editing is required.
 
 ---
 
+## Gutenberg Block Extensions in Sage 11 (with Vite)
 
-##  Gutenberg Block Extensions in Sage 11 (with Vite)
-
-This project uses a modular system to register Gutenberg block **variations**, **styles**, and **filters** using Vite's `import.meta.glob()` for auto-discovery. This replaces the old Bud.js system from previous Sage versions.
-
+This project uses a modular system to register Gutenberg block **variations**, **styles** and **filters**, using Vite's `import.meta.glob()` to discover them automatically. This replaces the Bud.js system from earlier Sage versions.
 
 ### Auto-register Gutenberg styles, variations and filters
 
 Sage 11 (Vite) does **not automatically load block styles, variations or filters** from the `resources/js` directory.
 
-To automatically register modules placed in `styles/`, `variations/`, and `filters/`, add the following loader to `resources/js/editor.js`.
+To automatically register the modules in `styles/`, `variations/` and `filters/`, add the following loader to `resources/js/editor.js`:
 
 ```js
 import { addFilter } from '@wordpress/hooks';
@@ -493,18 +592,17 @@ Object.values(filterModules).forEach((module) => {
 
 ### Why this is necessary
 
-Sage intentionally **does not include automatic registration for editor extensions** such as:
+Sage intentionally **doesn't register editor extensions automatically**, such as:
 
 * block styles
 * block variations
 * editor filters
 
-These features are optional Gutenberg customizations and different projects may structure them differently.
+These are optional Gutenberg customisations, and different projects may structure them differently.
 
-Therefore, Sage only provides the `editor.js` entry point and leaves the registration logic to the developer.
+So Sage only provides the `editor.js` entry point and leaves the registration logic to the developer.
 
-The code above creates a **simple auto-registration system** using Vite's `import.meta.glob()` feature to load all modules from specific directories.
-
+The code above creates a **simple auto-registration system** that uses Vite's `import.meta.glob()` to load all modules from specific directories.
 
 ### Folder structure
 
@@ -535,17 +633,15 @@ export default {
 };
 ```
 
+This pattern lets you:
 
-This pattern allows you to:
+* keep styles, variations and filters **organised in separate folders**
+* **register new modules automatically** without editing `editor.js`
+* scale Gutenberg customisations cleanly across large themes
 
-* keep styles, variations and filters **organized in separate folders**
-* **automatically register new modules** without editing `editor.js`
-* scale Gutenberg customizations cleanly across large themes
+### Registering block variations
 
-
-### Registering Block Variations
-
-Each variation file (e.g. `arrow.down.variation.js`) exports a default object with the shape:
+Each variation file (e.g. `arrow.down.variation.js`) exports a default object with this shape:
 
 ```js
 export default {
@@ -562,10 +658,9 @@ export default {
 };
 ```
 
-They are automatically registered via `import.meta.glob()` in `editor.js`.
+They're registered automatically through `import.meta.glob()` in `editor.js`.
 
-
-### Registering Block Styles
+### Registering block styles
 
 Each style file (e.g. `grid.style.js`) exports a default object:
 
@@ -578,10 +673,9 @@ export default {
 };
 ```
 
-These are also auto-registered from the `/styles/` directory.
+These are also registered automatically from the `/styles/` directory.
 
-
-### Registering Filters
+### Registering filters
 
 Filters live in `/filters/` and export three named exports:
 
@@ -592,57 +686,52 @@ export function callback(settings, blockName) {
   if (blockName !== 'core/button') return settings;
   return {
     ...settings,
-    styles: [{ label: 'Outlinearrrggg', name: 'outline' }],
+    styles: [{ label: 'Outline', name: 'outline' }],
   };
 }
 ```
 
-
 ### Notes
 
-- All files must use `export default` for variations and styles.
-- Filters must export `hook`, `name`, and `callback`.
-- This approach ensures minimal boilerplate and automatic discovery of all editor extensions.
-
-
+- Variations and styles must use `export default`.
+- Filters must export `hook`, `name` and `callback`.
+- This approach keeps boilerplate to a minimum and discovers all editor extensions automatically.
 
 ---
-
 
 ## SAGE Tools
 
 ### Installing ACF Composer
 
-ACF Composer is the ultimate tool for creating fields, blocks, widgets, and option pages using ACF Builder alongside Sage 10.
+ACF Composer is a tool for creating fields, blocks, widgets and option pages with ACF Builder in Sage.
 
 See the [ACF Composer installation](https://github.com/Log1x/acf-composer?tab=readme-ov-file#installation).
 
+#### Install through Composer
 
-#### Install via Composer:
-
-```bash
-cd wordpress/wp-content/themes/codigo
-composer require log1x/acf-composer
-```
-
-Start by publishing the `config/acf.php` configuration file using Acorn:
+The `composer` service already runs from the theme folder:
 
 ```bash
-docker compose run wpcli acorn vendor:publish --tag="acf-composer"
+docker compose --profile tools run --rm composer require log1x/acf-composer
 ```
 
+Start by publishing the `config/acf.php` configuration file with Acorn:
 
-If you have this warning
+```bash
+docker compose run --rm wpcli acorn vendor:publish --tag="acf-composer"
+```
+
+If you get this warning:
 
 ```bash
 INFO No publishable resources for tag [acf-composer].
 ```
 
-try running this command first
+run this command first:
 
 ```bash
-docker compose run wpcli acorn package:discover
-INFO  Discovering packages.  
+docker compose run --rm wpcli acorn package:discover
+INFO  Discovering packages.
 nesbot/carbon ......................................................... DONE
 nunomaduro/termwind ................................................... DONE
 roots/sage ............................................................ DONE
@@ -651,96 +740,94 @@ roots/sage ............................................................ DONE
 And try again:
 
 ```bash
-docker compose run wpcli acorn vendor:publish --tag="acf-composer"
+docker compose run --rm wpcli acorn vendor:publish --tag="acf-composer"
 INFO  Publishing [acf-composer] assets.
 Copying file [vendor/log1x/acf-composer/config/acf.php] to [config/acf.php] ............. DONE
 ```
 
-##### Generating a Field Group
+##### Generating a field group
 
-To create your first field group, start by running the following generator command from your theme directory:   
-
-```bash
-docker compose run wpcli acorn acf:field Example
-```
-
-This will create `app/Fields/Example.php` which is where you will create and manage your first field group.
-
-##### Generating a Field Partial
-
-A field partial consists of a field group that can be re-used and/or added to existing field groups.
+To create your first field group, run this generator command:
 
 ```bash
-docker compose run wpcli acorn acf:partial ContainerButtons
+docker compose run --rm wpcli acorn acf:field Example
 ```
-This will create `app/Fields/Partials/ListItems.php`.
 
-This can be utilized in our `Example` field by passing the `::class` constant to `->addPartial()`
+This creates `app/Fields/Example.php`, where you create and manage your first field group.
+
+##### Generating a field partial
+
+A field partial is a field group that can be reused and added to other field groups.
+
+```bash
+docker compose run --rm wpcli acorn acf:partial ContainerButtons
+```
+
+This creates `app/Fields/Partials/ContainerButtons.php`.
+
+You can then use it in the `Example` field by passing its `::class` constant to `->addPartial()`:
 
 ```php
 ->addPartial(ContainerButtons::class);
 ```
 
-##### Generating a Option Group
-Option pages are a great way to create global settings for your theme. To create an option page, run the following command:
+##### Generating an option page
+
+Option pages are a great way to create global settings for your theme. To create one, run:
 
 ```bash
-docker compose run wpcli acorn acf:option Example
+docker compose run --rm wpcli acorn acf:option Example
 ```
-This will create `app/Options/Example.php` which is where you will create and manage your first option page.
 
-##### Generating a Block
+This creates `app/Options/Example.php`, where you create and manage your first option page.
 
-Generating a block is generally the same as generating a field as seen above.
+##### Generating a block
 
-Start by creating the block field using Acorn:
+Generating a block works much like generating a field.
+
+Start by creating the block with Acorn:
 
 ```bash
-docker compose run wpcli acorn acf:block Example
-    
+docker compose run --rm wpcli acorn acf:block Example
+
 🎉 Example block successfully composed.
   ⮑  app/Blocks/Example.php
   ⮑  resources/views/blocks/example.blade.php
 ```
 
-You may also pass --construct to the command above to generate a stub with the block properties set within an attributes method. This can be useful for localization, etc.
+You can also add `--construct` to the command to generate a stub with the block properties set in an `attributes` method. This can be useful for translations, for example.
 
 ```bash
-docker compose run wpcli acorn acf:block Example --construct
+docker compose run --rm wpcli acorn acf:block Example --construct
 ```
 
-When running the block generator, one difference to a generic field is an accompanied View is generated in the resources/views/blocks directory.
+Unlike a normal field, the block generator also creates a view in the `resources/views/blocks` directory.
 
-Like the field generator, the example block contains a simple list repeater and is working out of the box.
+Like the field generator, the example block contains a simple list repeater and works out of the box.
 
-*Block Preview View*
+*Block preview view*
 
-While `$block->preview` is an option for conditionally modifying your block when shown in the editor, you may also render your block using a seperate view.
+You can use `$block->preview` to change your block when it's shown in the editor, or render the editor preview with a separate view.
 
-Simply duplicate your existing view prefixing it with `preview-` (e.g. `preview-example.blade.php`).
+To do that, duplicate your existing view and add a `preview-` prefix to its name (e.g. `preview-example.blade.php`).
 
+### Sage Directives
 
+[Sage Directives](https://log1x.github.io/sage-directives-docs/) adds a variety of useful Blade directives for Sage, including directives for WordPress, ACF and various other helpers.
 
-### Sage directives
-
-[Sage Directives](https://log1x.github.io/sage-directives-docs/) adds a variety of useful Blade directives for use with Sage 10 including directives for WordPress, ACF, and various miscellaneous helpers.
-
-
-
-#### Install Sage directives
+#### Install Sage Directives
 
 ```bash
-cd /wp_data/wp-content/themes/seadesign
-composer require log1x/sage-directives
+docker compose --profile tools run --rm composer require log1x/sage-directives
 ```
 
-#### Sage directives Examples
+#### Sage Directives examples
 
-[Wordpress](https://log1x.github.io/sage-directives-docs/usage/wordpress.html)
+[WordPress](https://log1x.github.io/sage-directives-docs/usage/wordpress.html)
 
 **`WP_Query`**
 
-`@query` initializes a standard `WP_Query` as `$query` and accepts the usual `WP_Query` parameters as an array.
+`@query` creates a standard `WP_Query` as `$query` and accepts the usual `WP_Query` parameters as an array.
 
 ```blade
 @query([
@@ -759,18 +846,15 @@ composer require log1x/sage-directives
 
 **`@field`**
 
-
-`@field` echoes the specified field using `get_field()`.
+`@field` prints the given field using `get_field()`.
 
 ```blade
 @field('text')
 ```
 
-
 **`@option`**
 
-
-`@option` echoes the specified theme options field using ` get_field($field, 'option')`.
+`@option` prints the given theme options field using `get_field($field, 'option')`.
 
 ```blade
 @option('text')
@@ -778,34 +862,66 @@ composer require log1x/sage-directives
 
 ### SAGE commands
 
-Clear cache
+Clear the cache:
 
 ```bash
-docker compose run wpcli acorn optimize:clear
-docker compose exec app php artisan view:clear
+docker compose run --rm wpcli acorn optimize:clear
+docker compose run --rm wpcli acorn view:clear
 ```
-
 
 ---
 
+### Adding JS libraries
 
-### Adding JS Libraries
+Install JS libraries through the `node` service. It runs from the theme folder.
+
+#### Alpine.js
+
+*Planned for a future release.*
+
+Alpine.js adds small, reactive behaviour directly in your Blade markup. It doesn't need a Vite plugin or any change to `vite.config.js`.
+
+1. Install Alpine.js with npm:
+
+```bash
+docker compose run --rm node sh -lc "npm install alpinejs"
+```
+
+2. Import and start it in `resources/js/app.js`:
+
+```js
+import Alpine from 'alpinejs';
+
+window.Alpine = Alpine;
+Alpine.start();
+```
+
+3. Use it in your Blade views:
+
+```blade
+<div x-data="{ open: false }">
+  <button @click="open = !open">Menu</button>
+  <nav x-show="open">…</nav>
+</div>
+```
 
 #### Barba
 
-Barba.js is a popular library for creating smooth page transitions in server-rendered applications. It works by intercepting link clicks and dynamically loading new content without a full page refresh.
+Barba.js is a popular library for smooth page transitions on server-rendered sites. It intercepts link clicks and loads the new content without a full page refresh.
 
 To add Barba.js to your Sage theme:
 
-1. Install Barba.js via npm:
+1. Install Barba.js with npm (this example also uses [GSAP](#gsap)):
 
 ```bash
-docker compose run --rm node sh -lc "npm install @barba/core"
+docker compose run --rm node sh -lc "npm install @barba/core gsap"
 ```
-2. Import and initialize Barba in your `resources/js/app.js` file:
+
+2. Import and set up Barba in your `resources/js/app.js` file:
 
 ```js
 import barba from '@barba/core';
+import gsap from 'gsap';
 
 barba.init({
   transitions: [
@@ -828,13 +944,15 @@ barba.init({
 
 #### Embla Carousel
 
-*Embla* is a lightweight carousel library that can be used to create sliders and carousels in your theme.
+*Embla* is a lightweight library for creating sliders and carousels in your theme.
+
+1. Install Embla with npm:
 
 ```bash
 docker compose run --rm node sh -lc "npm install embla-carousel"
 ```
 
-2. Import and initialize Embla in your module file:
+2. Import and set up Embla in your module file:
 
 ```js
 import EmblaCarousel from 'embla-carousel'
@@ -848,21 +966,23 @@ document.querySelectorAll('.embla-carousel').forEach((carousel) => {
 })
 ```
 
-You’ll also need the autoplay package installed:
+For autoplay, you also need the autoplay package:
 
 ```bash
 docker compose run --rm node sh -lc "npm install embla-carousel-autoplay"
 ```
 
-#### GSAP
+#### GSAP
 
-*GSAP* is a powerful JavaScript library for creating high-performance animations.
+*GSAP* is a powerful JavaScript library for high-performance animations.
+
+1. Install GSAP with npm:
 
 ```bash
 docker compose run --rm node sh -lc "npm install gsap"
 ```
 
-2. Import and initialize Gsap in your module file:
+2. Import and set up GSAP in your module file:
 
 ```js
 // typical import
@@ -877,6 +997,5 @@ import Draggable from "gsap/Draggable";
 import { gsap, ScrollTrigger, Draggable, MotionPathPlugin } from "gsap/all";
 
 // don't forget to register plugins
-gsap.registerPlugin(ScrollTrigger, Draggable, Flip, MotionPathPlugin); 
+gsap.registerPlugin(ScrollTrigger, Draggable, Flip, MotionPathPlugin);
 ```
-

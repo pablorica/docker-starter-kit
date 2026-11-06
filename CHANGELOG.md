@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
+## [0.6.1]- 2026-11-06
+
+### Changed
+- `SAGE.md`: all Composer, npm and WP-CLI commands run through Docker. Added the Vite environment variables and the new `vite.config.js` (no Vue). Fonts and colours are configured in CSS for Tailwind 4 (`@theme`), with no JS config. Added a Tailwind 3 → 4 table and Alpine.js (planned).
+
 ## [0.6.0]- 2026-11-06
 
 ### Added

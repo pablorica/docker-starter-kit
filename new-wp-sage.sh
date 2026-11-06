@@ -11,7 +11,8 @@
 #   PROJECT=skelly-couch SITE_TITLE="Skelly & Couch" ./new-wp-sage.sh
 #
 # Host requirements: docker (compose v2), mkcert (run `mkcert -install` once),
-# git, perl, curl inside the wordpress container (official image has it).
+# git, perl. Composer and WP-CLI run through Docker (the `composer` and `wpcli`
+# services in docker-compose.yml), so they don't need to be installed locally.
 
 set -Eeuo pipefail
 
@@ -23,7 +24,7 @@ DEFAULT_THEME="codigo"
 DEFAULT_WP_USER="pablo.rica"
 DEFAULT_WP_EMAIL="pablo@codigo.co.uk"
 DEFAULT_GITHUB_ORG="pablorica"
-SAGE_REPO="https://github.com/roots/sage.git"
+SAGE_PACKAGE="roots/sage"
 
 # Ports used in .env.example that get replaced per project
 TPL_SSL_PORT=8443
@@ -117,7 +118,13 @@ get_env() { sed -n "s/^$1=//p" .env | tail -n1 | sed -e "s/^['\"]//" -e "s/['\"]
 sudo_if_needed() { "$@" 2>/dev/null || { warn "Retrying with sudo: $*"; sudo "$@"; }; }
 
 dc() { docker compose "$@"; }
-wp() { dc exec -T -u www-data wordpress php /tmp/wp-cli.phar --path=/var/www/html "$@"; }
+# WP-CLI through the `wpcli` service (runs as www-data, entrypoint = wp)
+wp() { dc run --rm -T wpcli "$@"; }
+# Composer through the `composer` service, as your user (no root-owned files)
+composer_run() {
+  dc --profile tools run --rm -T --user "$(id -u):$(id -g)" \
+    -e COMPOSER_HOME=/tmp/composer "$@"
+}
 
 # ---------------------------------------------------------------------------
 # Pre-flight
@@ -177,7 +184,7 @@ if [[ $DO_WP_INSTALL == y ]]; then
   ask WP_ADMIN_EMAIL "WP admin email" "$DEFAULT_WP_EMAIL"
 fi
 
-ask SAGE_REF "Sage branch/tag (blank = latest)" ""
+ask SAGE_VERSION "Sage version constraint (blank = latest stable, e.g. 11.*)" ""
 
 ask_yn DO_GIT "Push to a GitHub repository?" y
 if [[ $DO_GIT == y ]]; then
@@ -203,7 +210,7 @@ cat <<EOF
     Folder        $PROJECT_DIR
     Site          $SITE_URL  ("$SITE_TITLE")
     phpMyAdmin    $PMA_URL
-    Theme         $THEME (Sage${SAGE_REF:+ @ $SAGE_REF})
+    Theme         $THEME (Sage ${SAGE_VERSION:-latest stable})
     Ports         SSL $SSL_PORT · PMA $PMA_PORT · Node $NODE_PORT
     Production    $PROD_DOMAIN
     WP install    $DO_WP_INSTALL${WP_ADMIN_USER:+ (user: $WP_ADMIN_USER, $WP_ADMIN_EMAIL)}
@@ -256,9 +263,11 @@ info "Done (DB user: ${DB_USER:-?}, DB name: ${DB_NAME:-?})"
 # 4. Docker stack
 # ---------------------------------------------------------------------------
 step "Starting Docker stack"
-dc pull
-dc up -d
-dc ps
+# caddy and node are in the "dev" profile. Start caddy (and the services it
+# depends on) now; node starts at the end, once the theme exists.
+dc --profile dev pull
+dc --profile dev up -d mysql wordpress phpmyadmin caddy
+dc --profile dev ps
 
 db_ok() {
   if [[ -n $DB_USER && -n $DB_NAME ]]; then
@@ -275,9 +284,7 @@ wait_for "MySQL" 120 db_ok || die "MySQL didn't come up. Check: docker compose l
 WPCLI=n
 if [[ $DO_WP_INSTALL == y ]]; then
   step "Installing WordPress"
-  if wait_for "WordPress core files" 120 dc exec -T wordpress test -f /var/www/html/wp-includes/version.php \
-     && dc exec -T -u www-data wordpress sh -c \
-        'curl -fsSL -o /tmp/wp-cli.phar https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar'; then
+  if wait_for "WordPress core files" 120 test -f "$PROJECT_DIR/wordpress/wp-includes/version.php"; then
     if wp core is-installed >/dev/null 2>&1; then
       info "WordPress is already installed."; WPCLI=y
     elif wp core install --url="$SITE_URL" --title="$SITE_TITLE" \
@@ -298,16 +305,16 @@ fi
 step "Installing Sage as '$THEME'"
 THEMES_DIR="$PROJECT_DIR/wordpress/wp-content/themes"
 wait_for "themes folder" 60 test -d "$THEMES_DIR" || die "Not found: $THEMES_DIR"
-TMP_SAGE="$PROJECT_DIR/.sage-tmp"
-rm -rf "$TMP_SAGE"
-# shellcheck disable=SC2086
-git clone --depth 1 ${SAGE_REF:+--branch "$SAGE_REF"} "$SAGE_REPO" "$TMP_SAGE"
-rm -rf "$TMP_SAGE"/{.git,.github,.editorconfig,.gitattributes,.gitignore}
+# create-project needs a missing or empty target folder
 sudo_if_needed rm -rf "${THEMES_DIR:?}/$THEME"
-sudo_if_needed mv "$TMP_SAGE" "$THEMES_DIR/$THEME"
-
-step "Installing Composer dependencies (vendor/)"
-dc --profile tools run --rm composer update -W
+# Runs in the themes folder; also installs vendor/ (no separate composer step needed)
+# shellcheck disable=SC2086
+composer_run -w /var/www/html/wp-content/themes composer \
+  create-project --no-interaction "$SAGE_PACKAGE" "$THEME" ${SAGE_VERSION:+"$SAGE_VERSION"}
+# Remove Sage developer files, if present
+for f in .git .github .editorconfig .gitattributes .gitignore; do
+  if [[ -e "$THEMES_DIR/$THEME/$f" ]]; then sudo_if_needed rm -rf "${THEMES_DIR:?}/$THEME/$f"; fi
+done
 
 if [[ $WPCLI == y ]]; then
   if wp theme activate "$THEME"; then :; else warn "Activate '$THEME' manually in wp-admin."; fi
