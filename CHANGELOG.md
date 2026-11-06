@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
-
 ## [0.6.5]- 2026-11-06
+
+### Added
+- `new-wp-sage.sh`: optional ACF PRO install through ACF's official Composer repository (licence key asked with hidden input and stored only in `.env`). The plugin is activated with WP-CLI, and the licence activates automatically through `ACF_PRO_LICENSE`.
+- `docs/AUTOMATED-SAGE-DOCKER-SETUP.md`: "ACF PRO licence" section (template changes for `docker-compose.wordpress.yml`, `wp-config.php.example` and `.env.example`), manual install steps and troubleshooting.
+
 
 ### Changed
 - Renamed `docs/README-new-wp-sage.md` to `docs/AUTOMATED-SAGE-DOCKER-SETUP.md`, and linked it from `docs/SAGE.md`.

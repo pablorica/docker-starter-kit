@@ -725,6 +725,8 @@ export function callback(settings, blockName) {
 
 ACF Composer is a tool for creating fields, blocks, widgets and option pages with ACF Builder in Sage.
 
+> ACF Composer needs **ACF PRO** (for blocks and option pages). `new-wp-sage.sh` installs and activates it for you. To install it by hand, see "ACF PRO" in [AUTOMATED-SAGE-DOCKER-SETUP.md](AUTOMATED-SAGE-DOCKER-SETUP.md).
+
 See the [ACF Composer installation](https://github.com/Log1x/acf-composer?tab=readme-ov-file#installation).
 
 #### Install through Composer

@@ -49,18 +49,27 @@ define('NONCE_SALT',       getenv('WORDPRESS_NONCE_SALT') ?:        'dd0a9f76143
 //define('WP_ALLOW_REPAIR', true);
 
 // Debug flags (recommended for dev)
-if (!defined('WP_DEBUG')) define('WP_DEBUG', getenv('WP_DEBUG') ? (getenv('WP_DEBUG') === 'true') : true);
+if (!defined('WP_DEBUG')) define('WP_DEBUG', getenv('WORDPRESS_DEBUG') ? (getenv('WORDPRESS_DEBUG') === 'true') : true);
 if (!defined('WP_DEBUG_DISPLAY')) define('WP_DEBUG_DISPLAY', false);
 if (!defined('WP_DEBUG_LOG')) define('WP_DEBUG_LOG', dirname(__FILE__) . '/logs/debug.log');
 
-// Logging (your compose maps ./logs -> /var/www/html/logs)
-ini_set('log_errors', '1');
-ini_set('error_reporting', (string) E_ALL);
-ini_set('error_log', dirname(__FILE__) . '/logs/error.log');
+// Check error logs in Docker via 'docker compose logs wordpress'
+
+// Optional
+//ini_set('log_errors', '1');
+//ini_set('error_reporting', (string) E_ALL);
+//ini_set('error_log', dirname(__FILE__) . '/logs/error.log');
 
 
 // ABSPATH and bootstrap
 if (!defined('ABSPATH')) define('ABSPATH', __DIR__ . '/');
-// Avoid WP-CLI to request SSL on mysql queries
+
+// ACF PRO licence (from .env through docker-compose). Activates the licence automatically.
+$acf_pro_license = getenv( 'ACF_PRO_LICENSE' );
+if ( $acf_pro_license && ! defined( 'ACF_PRO_LICENSE' ) ) {
+    define( 'ACF_PRO_LICENSE', $acf_pro_license );
+}
+unset( $acf_pro_license );
+
 require_once ABSPATH . 'wp-settings.php';
 

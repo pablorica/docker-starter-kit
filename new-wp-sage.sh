@@ -97,6 +97,19 @@ ask_secret() {
   printf -v "$__v" '%s' "$__a"
 }
 
+# ask_hidden VAR "Question"   (required, typing hidden, no generation; skipped if VAR is set)
+ask_hidden() {
+  local __v=$1 __q=$2 __a
+  if [[ -n ${!__v:-} ]]; then info "$__q: (taken from the environment)"; return; fi
+  while :; do
+    read -rsp "  $__q: " __a || true; echo
+    if [[ -z $__a ]]; then warn "Required."; continue; fi
+    if [[ $__a == *"'"* || $__a == *'"'* ]]; then warn "Quotes aren't allowed."; continue; fi
+    break
+  done
+  printf -v "$__v" '%s' "$__a"
+}
+
 port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
 # wait_for "description" timeout_seconds cmd...
@@ -193,6 +206,12 @@ fi
 
 ask SAGE_VERSION "Sage version constraint (blank = latest stable, e.g. 11.*)" ""
 
+ask_yn DO_ACF "Install ACF PRO?" y
+if [[ $DO_ACF == y ]]; then
+  ask_hidden ACF_PRO_LICENSE "ACF PRO licence key"
+  ask ACF_LICENSE_URL "Site URL the licence is activated for (used to download ACF PRO)" "https://$PROD_DOMAIN"
+fi
+
 ask_yn DO_GIT "Push to a GitHub repository?" y
 if [[ $DO_GIT == y ]]; then
   ask GITHUB_ORG  "GitHub user/organisation" "$DEFAULT_GITHUB_ORG"
@@ -222,6 +241,7 @@ cat <<EOF
     Ports         SSL $SSL_PORT · PMA $PMA_PORT · Node $NODE_PORT
     Production    $PROD_DOMAIN
     WP install    $DO_WP_INSTALL${WP_ADMIN_USER:+ (user: $WP_ADMIN_USER, $WP_ADMIN_EMAIL)}
+    ACF PRO       $DO_ACF
     GitHub        ${GITHUB_REPO:-no}
 EOF
 ask_yn GO "Continue?" y
@@ -264,6 +284,14 @@ set_env MYSQL_PASSWORD          "$MYSQL_PASSWORD" quote
 set_env MYSQL_ROOT_PASSWORD     "$MYSQL_ROOT_PASSWORD" quote
 set_env WORDPRESS_THEMENAME     "$THEME"
 set_env CADDY_PRODUCTION_DOMAIN "$PROD_DOMAIN"
+if [[ $DO_ACF == y ]]; then
+  # The licence key lives only in .env (which must stay out of git)
+  if grep -q '^ACF_PRO_LICENSE=' .env; then
+    set_env ACF_PRO_LICENSE "$ACF_PRO_LICENSE" quote
+  else
+    printf "\n# ACF PRO licence (never commit .env)\nACF_PRO_LICENSE='%s'\n" "$ACF_PRO_LICENSE" >> .env
+  fi
+fi
 DB_USER=$(get_env MYSQL_USER || true)
 DB_NAME=$(get_env MYSQL_DATABASE || true)
 info "Done (DB user: ${DB_USER:-?}, DB name: ${DB_NAME:-?})"
@@ -330,6 +358,52 @@ info "Custom vite.config.js copied."
 
 if [[ $WPCLI == y ]]; then
   if wp theme activate "$THEME"; then :; else warn "Activate '$THEME' manually in wp-admin."; fi
+fi
+
+# ---------------------------------------------------------------------------
+# 6b. ACF PRO (official Composer repository, run in a throwaway folder
+#     inside the composer container, then copied into wp-content/plugins)
+# ---------------------------------------------------------------------------
+if [[ $DO_ACF == y ]]; then
+  step "Installing ACF PRO"
+  read -r -d '' ACF_INSTALL_SH <<'SH' || true
+set -e
+rm -rf /tmp/acf && mkdir -p /tmp/acf && cd /tmp/acf
+cat > composer.json <<'JSON'
+{
+  "repositories": [{ "type": "composer", "url": "https://connect.advancedcustomfields.com" }],
+  "require": { "wpengine/advanced-custom-fields-pro": "*" },
+  "extra": { "installer-paths": { "wp-content/plugins/{$name}/": ["type:wordpress-plugin"] } },
+  "config": { "allow-plugins": { "composer/installers": true } }
+}
+JSON
+composer update --no-interaction --no-progress
+rm -rf /var/www/html/wp-content/plugins/advanced-custom-fields-pro
+cp -R wp-content/plugins/advanced-custom-fields-pro /var/www/html/wp-content/plugins/
+SH
+  # Licence key = username, activated site URL = password (passed only to this container)
+  ACF_AUTH=$(printf '{"http-basic":{"connect.advancedcustomfields.com":{"username":"%s","password":"%s"}}}' \
+    "$ACF_PRO_LICENSE" "$ACF_LICENSE_URL")
+  # Runs as www-data (33), the owner of wp-content in the WordPress image
+  if dc --profile tools run --rm -T --user 33:33 \
+       -e COMPOSER_HOME=/tmp/composer -e COMPOSER_AUTH="$ACF_AUTH" \
+       --entrypoint sh composer -c "$ACF_INSTALL_SH"; then
+    info "ACF PRO downloaded to wp-content/plugins/advanced-custom-fields-pro"
+    if [[ $WPCLI == y ]]; then
+      if wp plugin activate advanced-custom-fields-pro; then :; else warn "Activate ACF PRO manually in wp-admin."; fi
+    fi
+  else
+    warn "ACF PRO install failed. Check the licence key and the activated site URL, or install it manually (see docs)."
+  fi
+  unset ACF_AUTH
+
+  # Automatic licence activation needs ACF_PRO_LICENSE passed to WordPress
+  if grep -q 'ACF_PRO_LICENSE' wp-config.php && grep -q 'ACF_PRO_LICENSE' docker-compose.yml; then
+    info "Licence will be activated automatically from .env"
+  else
+    warn "ACF_PRO_LICENSE isn't wired into wp-config.php / docker-compose.yml, so the licence won't activate"
+    warn "automatically. Enter it in ACF → Updates, or update the template files (see AUTOMATED-SAGE-DOCKER-SETUP.md)."
+  fi
 fi
 
 # ---------------------------------------------------------------------------

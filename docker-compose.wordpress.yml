@@ -91,6 +91,7 @@ services:
       WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
       WORDPRESS_DEBUG: ${WORDPRESS_DEBUG}
       APP_ENV: ${APP_ENV}
+      ACF_PRO_LICENSE: ${ACF_PRO_LICENSE:-}
     volumes:
       - ./wordpress:/var/www/html
       - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php

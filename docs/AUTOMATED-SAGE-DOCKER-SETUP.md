@@ -8,6 +8,7 @@ How to create a new WordPress + Sage project on Docker automatically with `new-w
 - [Quick start](#quick-start)
 - [What the script asks](#what-the-script-asks)
 - [What the script does](#what-the-script-does)
+- [ACF PRO licence](#acf-pro-licence)
 - [Personal defaults](#personal-defaults)
 - [Manual installation (step by step)](#manual-installation-step-by-step)
 - [Useful commands](#useful-commands)
@@ -83,6 +84,9 @@ Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`,
 | WP admin password | generated if blank | WordPress admin account |
 | WP admin email | `pablo@codigo.co.uk` | WordPress admin account |
 | Sage version constraint | blank = latest stable | Pins a Sage version if needed, e.g. `11.*` |
+| Install ACF PRO? | yes | Downloads, installs and activates Advanced Custom Fields PRO |
+| ACF PRO licence key | — (hidden, required) | Written **only** to `.env` as `ACF_PRO_LICENSE` |
+| Site URL the licence is activated for | `https://<production domain>` | Needed by ACF's Composer repository to download the plugin |
 | Push to GitHub? | yes | Connects the project to a repository |
 | GitHub user/organisation | `pablorica` | Builds the suggested repository URL |
 | Repository URL | `git@github.com:<org>/<slug>.git` | `origin` remote |
@@ -108,6 +112,7 @@ The script warns you when a port is already in use. Passwords can't contain a si
 6. **Installs WordPress** (optional). It uses the `wpcli` service to run `wp core install` and set **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
 7. **Installs Sage with Composer.** It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and replaces Sage's default `vite.config.js` with the custom one from the template project. That one reads `APP_URL`, `NODE_PORT`, `VITE_PATH` and the other variables set in `docker-compose.yml` (see `docs/SAGE.md`). It uses `sudo` only if a file belongs to the container user.
 8. **Activates the theme** with the `wpcli` service.
+   - **ACF PRO** (optional): downloads the plugin from ACF's official Composer repository. It runs in a temporary folder inside the `composer` container, so nothing is added to the theme's `composer.json`. It copies the plugin to `wp-content/plugins/advanced-custom-fields-pro`, then activates it with WP-CLI. The licence then activates automatically from `.env`, if the template is set up for it (see [ACF PRO licence](#acf-pro-licence)).
 9. **GitHub** (optional):
     - runs `git init` and adds the remote
     - if the repository already has commits (e.g. a LICENSE), adopts its history and adds any files that are missing locally, without overwriting your files
@@ -116,6 +121,43 @@ The script warns you when a port is already in use. Passwords can't contain a si
 10. **Summary.** It prints the URLs and credentials, then starts the Node dev server in the foreground (stop it with `Ctrl+C`).
 
 If a command fails, the script stops and shows the line that failed.
+
+---
+
+## ACF PRO licence
+
+The script installs ACF PRO, but **activating the licence** automatically needs these one-off changes to the template project (`~/Dockers/default`). Without them, ACF PRO is still installed, and you enter the key in **ACF → Updates**.
+
+**1. `docker-compose.wordpress.yml`**: pass the key to the `wordpress` service:
+
+```yaml
+  wordpress:
+    environment:
+      # ...existing variables...
+      ACF_PRO_LICENSE: ${ACF_PRO_LICENSE:-}
+```
+
+**2. `wp-config.php.example`**: define the constant ACF reads, **before** the `require_once ABSPATH . 'wp-settings.php';` line:
+
+```php
+// ACF PRO licence (from .env through docker-compose). Activates the licence automatically.
+if ( getenv( 'ACF_PRO_LICENSE' ) ) {
+    define( 'ACF_PRO_LICENSE', getenv( 'ACF_PRO_LICENSE' ) );
+}
+```
+
+**3. `.env.example`** (optional): add an empty placeholder so every project has the variable:
+
+```ini
+ACF_PRO_LICENSE=
+```
+
+Notes:
+
+- **The key is never in the script or in git.** You type it (hidden), and it's saved only in the project's `.env`. To avoid typing it, you can pass it from your password manager instead, e.g. `ACF_PRO_LICENSE="$(…)" ./new-wp-sage.sh`.
+- **The site URL is the password ACF's Composer repository asks for.** It must be a site URL the licence is activated for. ACF recommends an existing production URL when the final URL isn't known yet. With a single-site licence, use that site's URL.
+- **Staging and production** need the same `ACF_PRO_LICENSE` variable (or the `define`) in their own environment.
+- **ACF PRO is a paid plugin.** It's fine in a **private** repository, but don't commit `wp-content/plugins/advanced-custom-fields-pro` to a public one.
 
 ---
 
@@ -351,7 +393,56 @@ With WP-CLI:
 docker compose run --rm wpcli theme activate <theme>
 ```
 
-### 3. GitHub
+### 3. ACF PRO (optional)
+
+#### Option A: Composer, as the script does
+
+```bash
+cd ~/Dockers/<project>
+
+docker compose --profile tools run --rm -T --user 33:33 \
+  -e COMPOSER_HOME=/tmp/composer \
+  -e COMPOSER_AUTH='{"http-basic":{"connect.advancedcustomfields.com":{"username":"<licence-key>","password":"https://<activated-site>"}}}' \
+  --entrypoint sh composer -c '
+    set -e
+    mkdir -p /tmp/acf && cd /tmp/acf
+    cat > composer.json <<"JSON"
+{
+  "repositories": [{ "type": "composer", "url": "https://connect.advancedcustomfields.com" }],
+  "require": { "wpengine/advanced-custom-fields-pro": "*" },
+  "extra": { "installer-paths": { "wp-content/plugins/{$name}/": ["type:wordpress-plugin"] } },
+  "config": { "allow-plugins": { "composer/installers": true } }
+}
+JSON
+    composer update --no-interaction
+    rm -rf /var/www/html/wp-content/plugins/advanced-custom-fields-pro
+    cp -R wp-content/plugins/advanced-custom-fields-pro /var/www/html/wp-content/plugins/
+  '
+
+docker compose run --rm wpcli plugin activate advanced-custom-fields-pro
+```
+
+#### Option B: zip file
+
+Download the zip from your ACF account (**Licenses** tab), then:
+
+```bash
+cp ~/Downloads/advanced-custom-fields-pro.zip wordpress/
+docker compose run --rm wpcli plugin install advanced-custom-fields-pro.zip --activate
+rm wordpress/advanced-custom-fields-pro.zip
+```
+
+#### Activate the licence
+
+Add `ACF_PRO_LICENSE='<licence-key>'` to `.env` (with the template changes in [ACF PRO licence](#acf-pro-licence)), then recreate the WordPress container so it picks up the variable:
+
+```bash
+docker compose up -d wordpress
+```
+
+Or enter the key in **wp-admin → ACF → Updates**.
+
+### 4. GitHub
 
 Create the repository on GitHub first (e.g. `https://github.com/<github-user>/<project>`).
 
@@ -426,6 +517,8 @@ docker compose run --rm wpcli plugin list    # WP-CLI (any wp command)
 | Composer complains about the PHP version | The `composer` image's PHP differs from the `wordpress` one. Add `--ignore-platform-reqs`, as long as the `wordpress` container meets Sage's requirements. |
 | Caddy isn't running after `docker compose up -d` | It's in the `dev` profile. Check that `.env` has `COMPOSE_PROFILES=dev`, or start it with `docker compose --profile dev up -d caddy`. |
 | Push failed | Check that GitHub access works: `ssh -T git@github.com` or `gh auth status`. Then run `git push -u origin main`. |
+| ACF PRO install failed (`401` / authentication required) | Check the licence key, and that the site URL is one the licence is **activated** for, including `https://`. Or install it from the zip ([Option B](#option-b-zip-file)). |
+| ACF PRO installed but the licence isn't active | Check that `ACF_PRO_LICENSE` is in `.env`, `docker-compose.yml` and `wp-config.php` (see [ACF PRO licence](#acf-pro-licence)), then run `docker compose up -d wordpress` and open wp-admin. Or enter the key in **ACF → Updates**. |
 
 ---
 
@@ -434,4 +527,5 @@ docker compose run --rm wpcli plugin list    # WP-CLI (any wp command)
 - **Never commit `.env` or `certs/`.** The script stops and asks if they aren't in `.gitignore`.
 - **Don't store GitHub tokens or passwords in plain-text notes or in git URLs.** If a token has been exposed, revoke it in **GitHub → Settings → Developer settings → Personal access tokens**.
 - For GitHub access, use SSH keys (`git@github.com:...`) or the GitHub CLI (`gh auth login`), which keeps your credentials securely.
-- The script prints the generated passwords at the end so you can save them in your password manager.
+- The script prints the generated passwords at the end so you can save them in your password manager. It **never** prints the ACF PRO licence key.
+- The ACF PRO licence key is saved only in `.env`. During the install, it's passed only to the temporary `composer` container.
