@@ -34,7 +34,7 @@ define('WP_SITEURL', $wphome);
 define('FORCE_SSL_ADMIN', true);
 
 
-// Salts — copy the ones from your current file, or generate new and paste here:
+// Salts — copy the ones from .env; WordPress generates its own if empty
 define('AUTH_KEY',         getenv('WORDPRESS_AUTH_KEY') ?: '');
 define('SECURE_AUTH_KEY',  getenv('WORDPRESS_SECURE_AUTH_KEY') ?: '');
 define('LOGGED_IN_KEY',    getenv('WORDPRESS_LOGGED_IN_KEY') ?: '');

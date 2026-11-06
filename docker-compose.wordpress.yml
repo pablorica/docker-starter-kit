@@ -8,7 +8,6 @@ services:
     volumes:
       - ./wordpress:/workspace
       - theme_node_modules:/workspace/wp-content/themes/${WORDPRESS_THEMENAME}/node_modules
-    # The SCSS/JS build + nodemon watcher don't listen on a port, so none is published.
     # Uncomment only if you later add a dev server / livereload (e.g. BrowserSync):
     ports:
      - "${NODE_PORT}:${NODE_PORT}"
@@ -19,7 +18,7 @@ services:
       NODE_PORT: ${NODE_PORT} ## Required by SAGE
       APP_PORT: ${WORDPRESS_SSL_PORT} ## Required by SAGE
       VITE_PATH: ${VITE_PATH} ## Required by SAGE
-      BUD_BROWSERSLIST_UPDATE: false ## Optional in SAGE 10
+      #BUD_BROWSERSLIST_UPDATE: false ## Optional in SAGE 10
     # If file-watching doesn't fire on macOS / Windows Docker Desktop, add polling —
     # bind-mount inotify events don't cross the host boundary there:
     #   environment:

@@ -184,14 +184,16 @@ while :; do
 done
 
 # Suggest ports: next SSL port after the highest one used by existing projects
+# (strip inline comments and quotes first: "8443   # all 3 vhosts…" must read as 8443)
 last_ssl=$(grep -hs '^WORDPRESS_SSL_PORT=' "$DOCKERS_DIR"/*/.env 2>/dev/null \
-  | cut -d= -f2 | tr -dc '0-9\n' | sort -n | tail -n1 || true)
+  | cut -d= -f2 | sed 's/#.*//' | tr -dc '0-9\n' \
+  | awk '$1 >= 1 && $1 <= 65535' | sort -n | tail -n1 || true)
 sug_ssl=$(( ${last_ssl:-$TPL_SSL_PORT} + 1 ))
 ask SSL_PORT  "WordPress SSL port (WORDPRESS_SSL_PORT)" "$sug_ssl"
 ask PMA_PORT  "phpMyAdmin port (PHPMYADMIN_PORT)"       "$(( SSL_PORT + 100 ))"
 ask NODE_PORT "Node/Vite port (NODE_PORT)"              "$(( SSL_PORT - 3200 ))"
 for p in "$SSL_PORT" "$PMA_PORT" "$NODE_PORT"; do
-  [[ $p =~ ^[0-9]+$ ]] || die "Invalid port: $p"
+  [[ $p =~ ^[0-9]+$ ]] && (( p >= 1 && p <= 65535 )) || die "Invalid port: $p"
   port_in_use "$p" && warn "Port $p looks busy on this machine."
 done
 
