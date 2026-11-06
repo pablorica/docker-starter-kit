@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ---
 
 
+## [0.6.5]- 2026-11-06
+
+### Changed
+- Renamed `docs/README-new-wp-sage.md` to `docs/AUTOMATED-SAGE-DOCKER-SETUP.md`, and linked it from `docs/SAGE.md`.
+
+
 ## [0.6.4]- 2026-11-06
 
 ### Changed

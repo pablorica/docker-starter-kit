@@ -21,7 +21,7 @@ If you need information about earlier versions of Sage, check [SAGE_10.md](SAGE_
 
 The theme is based on Sage 11, a WordPress starter theme that uses Laravel Blade for templates, Vite for assets and Tailwind CSS 4 for styles.
 
-> `new-wp-sage.sh` runs these steps for you when it creates a new project. Use this section to run them by hand.
+> `new-wp-sage.sh` runs these steps for you when it creates a new project (see [AUTOMATED-SAGE-DOCKER-SETUP.md](AUTOMATED-SAGE-DOCKER-SETUP.md)). Use this section to run them by hand.
 
 ### Create the theme with Composer
 

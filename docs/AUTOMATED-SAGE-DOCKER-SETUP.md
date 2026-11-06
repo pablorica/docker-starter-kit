@@ -1,4 +1,6 @@
-# new-wp-sage.sh — New WordPress + Sage project on Docker
+# Automated Sage + Docker setup
+
+How to create a new WordPress + Sage project on Docker automatically with `new-wp-sage.sh`, plus every step for doing it by hand.
 
 `new-wp-sage.sh` sets up a new local WordPress site that runs on Docker and uses a theme based on [Sage](https://github.com/roots/sage). It follows the same steps as the manual installation, using `~/Dockers/default` as the template project. Before it does anything, it asks you for every value that changes from one project to the next.
 
