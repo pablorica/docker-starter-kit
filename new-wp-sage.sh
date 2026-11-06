@@ -40,7 +40,7 @@ TEMPLATE_FILES=(
   "uploads.ini.example:uploads.ini"
   "wp-config.php.example:wp-config.php"
   ".editorconfig.example:.editorconfig"
-  ".gitignore.example:.gitignore"
+  "gitignore.wordpress.example:.gitignore"
   "nginx.conf.staging:nginx.conf.staging"
   "apache.conf.staging:apache.conf.staging"
   "docker_sage:docker"
@@ -331,9 +331,10 @@ info "Done (DB user: ${DB_USER:-?}, DB name: ${DB_NAME:-?})"
 # ---------------------------------------------------------------------------
 # On the server, docker-compose.remote.yml publishes WordPress on 127.0.0.1:${WORDPRESS_SSL_PORT}
 # and phpMyAdmin on 127.0.0.1:${PHPMYADMIN_PORT}, so the proxy uses the same two ports.
-step "Filling in nginx.conf.staging and apache.conf.staging"
-for conf in nginx.conf.staging apache.conf.staging; do
+step "Filling in .gitignore, nginx.conf.staging and apache.conf.staging"
+for conf in .gitignore nginx.conf.staging apache.conf.staging; do
   [[ -f $conf ]] || continue
+  file_replace "$conf" "__THEME__"    "$THEME"
   file_replace "$conf" "__PROJECT__"  "$PROJECT"
   file_replace "$conf" "__DOMAIN__"   "$PROD_DOMAIN"
   file_replace "$conf" "__APP_PORT__" "$SSL_PORT"
@@ -342,6 +343,8 @@ for conf in nginx.conf.staging apache.conf.staging; do
   left=$(grep -o '__[A-Z_]*__' "$conf" | grep -v '__LIVE_DOMAIN__' | sort -u | tr '\n' ' ' || true)
   if [[ -n $left ]]; then
     warn "$conf still has placeholders: $left"
+  elif [[ $conf == .gitignore ]]; then
+    info "$conf: tracks the theme wordpress/wp-content/themes/$THEME/"
   else
     info "$conf: $PROD_DOMAIN -> 127.0.0.1:$SSL_PORT (phpMyAdmin $PMA_PORT)"
   fi

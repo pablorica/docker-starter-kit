@@ -35,7 +35,7 @@ Composer and WP-CLI **don't** need to be installed locally. They run through Doc
 You also need:
 
 - The template project at `~/Dockers/default` with these files:
-  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `.gitignore.example`, `nginx.conf.staging`, `apache.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md`, `docs/ALPINE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
+  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `gitignore.wordpress.example`, `nginx.conf.staging`, `apache.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md`, `docs/ALPINE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
 - An **empty** GitHub repository for the project (optional), and GitHub access through SSH keys or the `gh` CLI (see [Security notes](#security-notes)).
 
 ---
@@ -112,7 +112,9 @@ The script warns you when a port is already in use. Passwords can't contain a si
 
    - generates **unique WordPress salts** for the project (`WORDPRESS_AUTH_KEY` … `WORDPRESS_NONCE_SALT`, 64 random characters each). See [WordPress salts](#wordpress-salts).
 
-   It then fills in **`nginx.conf.staging`** and **`apache.conf.staging`**: the staging domain, the project folder on the server, and the WordPress and phpMyAdmin ports (see [Staging server](#staging-server-nginx-or-apache)).
+   It then fills in the placeholders in the other template files:
+   - **`.gitignore`**: `__THEME__` becomes the theme folder name, so git tracks `wordpress/wp-content/themes/<theme>/` and ignores its `vendor/`, `node_modules/` and so on.
+   - **`nginx.conf.staging`** and **`apache.conf.staging`**: the staging domain, the project folder on the server, and the WordPress and phpMyAdmin ports (see [Staging server](#staging-server-nginx-or-apache)).
 5. **Starts Docker.** It pulls the images, then starts `mysql`, `wordpress`, `phpmyadmin` and `caddy` (Caddy is in the `dev` profile, so it's started by name). Then it waits until MySQL accepts the WordPress database user.
 6. **Installs WordPress** (optional). It uses the `wpcli` service to run `wp core install` and set **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
 7. **Installs Sage with Composer.** It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and replaces Sage's default `vite.config.js` with the custom one from the template project. That one reads `APP_URL`, `NODE_PORT`, `VITE_PATH` and the other variables set in `docker-compose.yml` (see `docs/SAGE.md`). It uses `sudo` only if a file belongs to the container user.
@@ -391,7 +393,7 @@ cp ../default/Caddyfile.sage.example Caddyfile
 cp ../default/uploads.ini.example uploads.ini
 cp ../default/wp-config.php.example wp-config.php
 cp ../default/.editorconfig.example .editorconfig
-cp ../default/.gitignore.example .gitignore
+cp ../default/gitignore.wordpress.example .gitignore
 cp ../default/nginx.conf.staging nginx.conf.staging
 cp ../default/apache.conf.staging apache.conf.staging
 cp -R ../default/docker_sage docker
@@ -428,11 +430,11 @@ CADDY_PRODUCTION_DOMAIN=<prod-domain>
 
 > Put passwords that contain `$` in **single quotes**. Without them, Docker Compose reads `$something` as a variable.
 
-#### Fill in the staging server configs
+#### Fill in the placeholders (`.gitignore` and staging server configs)
 
 ```bash
-for f in nginx.conf.staging apache.conf.staging; do
-  perl -pi -e 's/__PROJECT__/<project>/g; s/__DOMAIN__/<prod-domain>/g; s/__APP_PORT__/<ssl-port>/g; s/__PMA_PORT__/<pma-port>/g' "$f"
+for f in .gitignore nginx.conf.staging apache.conf.staging; do
+  perl -pi -e 's/__THEME__/<theme>/g; s/__PROJECT__/<project>/g; s/__DOMAIN__/<prod-domain>/g; s/__APP_PORT__/<ssl-port>/g; s/__PMA_PORT__/<pma-port>/g' "$f"
 done
 ```
 
