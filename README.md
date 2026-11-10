@@ -352,5 +352,5 @@ We use [SemVer](https://semver.org/) for versioning. For the versions available,
 
 ### Changelog
 
-[CHANGELOG.md](https://github.com/pablorica/docker-starter-kit/blob/main/CHANGELOG.md)
+[CHANGELOG.md](docs/CHANGELOG.md)
 

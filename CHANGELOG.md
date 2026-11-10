@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
-## [0.6.8]- 2026-11-06
+## [0.6.8] - 2026-11-06
 
 ### Changed
 - `.gitignore.example`: the theme folder is now the `__THEME__` placeholder (it was hardcoded as `codigo`). `new-wp-sage.sh` replaces it with the theme name.
