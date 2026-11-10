@@ -387,13 +387,23 @@ db_ok() {
 }
 wait_for "MySQL" 120 db_ok || die "MySQL didn't come up. Check: docker compose logs mysql"
 
+# On its first start, the WordPress image copies the core files into ./wordpress
+# (in no fixed order), then hands over to the web server. Checking a single file
+# isn't enough: wait until the entrypoint has finished (PID 1 is no longer
+# docker-entrypoint.sh) and wp-settings.php exists.
+wp_core_ready() {
+  [[ -f "$PROJECT_DIR/wordpress/wp-settings.php" ]] || return 1
+  dc exec -T wordpress sh -c \
+    'case "$(tr "\000" " " </proc/1/cmdline)" in *docker-entrypoint*) exit 1;; esac'
+}
+
 # ---------------------------------------------------------------------------
 # 5. WordPress install
 # ---------------------------------------------------------------------------
 WPCLI=n
 if [[ $DO_WP_INSTALL == y ]]; then
   step "Installing WordPress"
-  if wait_for "WordPress core files" 120 test -f "$PROJECT_DIR/wordpress/wp-includes/version.php"; then
+  if wait_for "WordPress core files" 180 wp_core_ready; then
     if wp core is-installed >/dev/null 2>&1; then
       info "WordPress is already installed."; WPCLI=y
     elif wp core install --url="$SITE_URL" --title="$SITE_TITLE" \
