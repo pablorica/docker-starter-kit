@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# new-wp-sage.sh — scaffold a new local WordPress + Sage project on Docker,
-# following the ~/Dockers/default template workflow.
+# new-wp-sage.sh — scaffold a new local WordPress project on Docker (optionally
+# with a Sage theme and ACF PRO), following the ~/Dockers/default template workflow.
 #
 # Usage:
 #   ./new-wp-sage.sh
@@ -44,6 +44,10 @@ TEMPLATE_FILES=(
   "nginx.conf.staging:nginx.conf.staging"
   "apache.conf.staging:apache.conf.staging"
   "docker_sage:docker"
+)
+
+# Copied only when Sage is installed
+SAGE_TEMPLATE_FILES=(
   "docs/SAGE.md:docs/SAGE.md"
   "docs/PostCSS.md:docs/PostCSS.md"
   "docs/ALPINE.md:docs/ALPINE.md"
@@ -217,7 +221,10 @@ if [[ $DO_WP_INSTALL == y ]]; then
   ask WP_ADMIN_EMAIL "WP admin email" "$DEFAULT_WP_EMAIL"
 fi
 
-ask SAGE_VERSION "Sage version constraint (blank = latest stable, e.g. 11.*)" ""
+ask_yn DO_SAGE "Install the Sage theme?" y
+if [[ $DO_SAGE == y ]]; then
+  ask SAGE_VERSION "Sage version constraint (blank = latest stable, e.g. 11.*)" ""
+fi
 
 ask_yn DO_ACF "Install ACF PRO?" y
 if [[ $DO_ACF == y ]]; then
@@ -230,17 +237,28 @@ if [[ $DO_GIT == y ]]; then
   ask GITHUB_ORG  "GitHub user/organisation" "$DEFAULT_GITHUB_ORG"
   ask GITHUB_REPO "Repository URL (SSH recommended)" "git@github.com:$GITHUB_ORG/$PROJECT.git"
 fi
-ask_yn START_NODE "Start the Node dev server at the end?" y
+# The Node/Vite dev server builds the Sage theme, so it's only offered with Sage
+if [[ $DO_SAGE == y ]]; then
+  ask_yn START_NODE "Start the Node dev server at the end?" y
+else
+  START_NODE=n
+fi
+
+# Files to copy for this project
+COPY_FILES=("${TEMPLATE_FILES[@]}")
+if [[ $DO_SAGE == y ]]; then COPY_FILES+=("${SAGE_TEMPLATE_FILES[@]}"); fi
 
 PROJECT_DIR="$DOCKERS_DIR/$PROJECT"
 SITE_URL="https://$PROJECT.localhost:$SSL_PORT"
 PMA_URL="https://pma.$PROJECT.localhost:$SSL_PORT"
 
 # Check template files before touching anything
-for pair in "${TEMPLATE_FILES[@]}"; do
+for pair in "${COPY_FILES[@]}"; do
   [[ -e "$TEMPLATE_DIR/${pair%%:*}" ]] || die "Missing template file: $TEMPLATE_DIR/${pair%%:*}"
 done
-[[ -f "$TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG" ]] || die "Missing template file: $TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG"
+if [[ $DO_SAGE == y ]]; then
+  [[ -f "$TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG" ]] || die "Missing template file: $TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG"
+fi
 if [[ -e $PROJECT_DIR ]] && [[ -n $(ls -A "$PROJECT_DIR" 2>/dev/null) ]]; then
   die "$PROJECT_DIR already exists and isn't empty."
 fi
@@ -250,7 +268,7 @@ cat <<EOF
     Folder        $PROJECT_DIR
     Site          $SITE_URL  ("$SITE_TITLE")
     phpMyAdmin    $PMA_URL
-    Theme         $THEME (Sage ${SAGE_VERSION:-latest stable})
+    Theme         $( [[ $DO_SAGE == y ]] && echo "$THEME (Sage ${SAGE_VERSION:-latest stable})" || echo "no Sage (folder name $THEME used in .env / .gitignore)" )
     Ports         SSL $SSL_PORT · PMA $PMA_PORT · Node $NODE_PORT
     Production    $PROD_DOMAIN
     WP install    $DO_WP_INSTALL${WP_ADMIN_USER:+ (user: $WP_ADMIN_USER, $WP_ADMIN_EMAIL)}
@@ -273,7 +291,7 @@ mkcert -cert-file ./certs/local.pem -key-file ./certs/local-key.pem \
 # 2. Copy template files
 # ---------------------------------------------------------------------------
 step "Copying files from $TEMPLATE_DIR"
-for pair in "${TEMPLATE_FILES[@]}"; do
+for pair in "${COPY_FILES[@]}"; do
   src=${pair%%:*}; dst=${pair#*:}
   mkdir -p "$(dirname "$dst")"
   cp -R "$TEMPLATE_DIR/$src" "$dst"
@@ -393,25 +411,29 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Sage theme
 # ---------------------------------------------------------------------------
-step "Installing Sage as '$THEME'"
-THEMES_DIR="$PROJECT_DIR/wordpress/wp-content/themes"
-wait_for "themes folder" 60 test -d "$THEMES_DIR" || die "Not found: $THEMES_DIR"
-# create-project needs a missing or empty target folder
-sudo_if_needed rm -rf "${THEMES_DIR:?}/$THEME"
-# Runs in the themes folder; also installs vendor/ (no separate composer step needed)
-# shellcheck disable=SC2086
-composer_run -w /var/www/html/wp-content/themes composer \
-  create-project --no-interaction "$SAGE_PACKAGE" "$THEME" ${SAGE_VERSION:+"$SAGE_VERSION"}
-# Remove Sage developer files, if present
-for f in .git .github .editorconfig .gitattributes .gitignore; do
-  if [[ -e "$THEMES_DIR/$THEME/$f" ]]; then sudo_if_needed rm -rf "${THEMES_DIR:?}/$THEME/$f"; fi
-done
-# Replace Sage's default vite.config.js with our custom one (reads APP_URL, NODE_PORT, VITE_PATH…)
-sudo_if_needed cp "$TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG" "$THEMES_DIR/$THEME/vite.config.js"
-info "Custom vite.config.js copied."
+if [[ $DO_SAGE == y ]]; then
+  step "Installing Sage as '$THEME'"
+  THEMES_DIR="$PROJECT_DIR/wordpress/wp-content/themes"
+  wait_for "themes folder" 60 test -d "$THEMES_DIR" || die "Not found: $THEMES_DIR"
+  # create-project needs a missing or empty target folder
+  sudo_if_needed rm -rf "${THEMES_DIR:?}/$THEME"
+  # Runs in the themes folder; also installs vendor/ (no separate composer step needed)
+  # shellcheck disable=SC2086
+  composer_run -w /var/www/html/wp-content/themes composer \
+    create-project --no-interaction "$SAGE_PACKAGE" "$THEME" ${SAGE_VERSION:+"$SAGE_VERSION"}
+  # Remove Sage developer files, if present
+  for f in .git .github .editorconfig .gitattributes .gitignore; do
+    if [[ -e "$THEMES_DIR/$THEME/$f" ]]; then sudo_if_needed rm -rf "${THEMES_DIR:?}/$THEME/$f"; fi
+  done
+  # Replace Sage's default vite.config.js with our custom one (reads APP_URL, NODE_PORT, VITE_PATH…)
+  sudo_if_needed cp "$TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG" "$THEMES_DIR/$THEME/vite.config.js"
+  info "Custom vite.config.js copied."
 
-if [[ $WPCLI == y ]]; then
-  if wp theme activate "$THEME"; then :; else warn "Activate '$THEME' manually in wp-admin."; fi
+  if [[ $WPCLI == y ]]; then
+    if wp theme activate "$THEME"; then :; else warn "Activate '$THEME' manually in wp-admin."; fi
+  fi
+else
+  step "Skipping Sage (WordPress keeps its default theme)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -511,6 +533,9 @@ info "DB            ${DB_USER:-?} / $MYSQL_PASSWORD  (root: $MYSQL_ROOT_PASSWORD
 if [[ $START_NODE == y ]]; then
   step "Starting Node dev server (Ctrl+C to stop)"
   exec docker compose --profile dev up node
-else
+elif [[ $DO_SAGE == y ]]; then
   info "Start the dev server later with: cd $PROJECT_DIR && docker compose --profile dev up node"
+else
+  info "No Sage theme, so don't start the 'node' service. Start the stack by name:"
+  info "  cd $PROJECT_DIR && docker compose --profile dev up -d mysql wordpress phpmyadmin caddy"
 fi

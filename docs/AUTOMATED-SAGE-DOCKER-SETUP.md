@@ -2,7 +2,7 @@
 
 How to create a new WordPress + Sage project on Docker automatically with `new-wp-sage.sh`, plus every step for doing it by hand.
 
-`new-wp-sage.sh` sets up a new local WordPress site that runs on Docker and uses a theme based on [Sage](https://github.com/roots/sage). It follows the same steps as the manual installation, using `~/Dockers/default` as the template project. Before it does anything, it asks you for every value that changes from one project to the next.
+`new-wp-sage.sh` sets up a new local WordPress site that runs on Docker. It can also install a theme based on [Sage](https://github.com/roots/sage) and the ACF PRO plugin. Both are optional, so the same script works for Sage projects and for other WordPress projects (e.g. a headless WordPress with a separate React front end). It follows the same steps as the manual installation, using `~/Dockers/default` as the template project. Before it does anything, it asks you for every value that changes from one project to the next.
 
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
@@ -62,7 +62,13 @@ Any question can be answered in advance with an environment variable. The script
 PROJECT=skelly-couch SITE_TITLE="Skelly & Couch" PROD_DOMAIN=beta.skelly-couch.tm-studio.co.uk ./new-wp-sage.sh
 ```
 
-Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `SAGE_VERSION`, `DO_ACF` (y/n), `ACF_PRO_LICENSE`, `ACF_LICENSE_URL`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
+For a project without Sage (e.g. headless WordPress), pre-answer `DO_SAGE=n`. Add `DO_ACF=n` too if you don't need ACF PRO:
+
+```bash
+DO_SAGE=n ./new-wp-sage.sh
+```
+
+Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `DO_SAGE` (y/n), `SAGE_VERSION`, `DO_ACF` (y/n), `ACF_PRO_LICENSE`, `ACF_LICENSE_URL`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
 
 ---
 
@@ -77,25 +83,39 @@ Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`,
 | Theme folder name | `codigo` | Sage theme folder, `WORDPRESS_THEMENAME` and the replacement for `template` in `.env` |
 | WordPress SSL port | the highest port used in your other projects + 1 | `WORDPRESS_SSL_PORT` (replaces `8443`) |
 | phpMyAdmin port | SSL port + 100 | `PHPMYADMIN_PORT` (replaces `8081`) |
-| Node/Vite port | SSL port − 3200 | `NODE_PORT` (replaces `5173`) || MySQL password | generated if blank | `MYSQL_PASSWORD` |
+| Node/Vite port | SSL port − 3200 | `NODE_PORT` (replaces `5173`) |
+| MySQL password | generated if blank | `MYSQL_PASSWORD` |
 | MySQL root password | generated if blank | `MYSQL_ROOT_PASSWORD` |
 | Production domain | — (required) | `CADDY_PRODUCTION_DOMAIN`, e.g. `beta.skelly-couch.tm-studio.co.uk` or `freedmanhilmi.com` |
 | Install WordPress automatically? | yes | Runs the WordPress install with WP-CLI instead of the browser |
 | WP admin user | `pablo.rica` | WordPress admin account |
 | WP admin password | generated if blank | WordPress admin account |
 | WP admin email | `pablo@codigo.co.uk` | WordPress admin account |
-| Sage version constraint | blank = latest stable | Pins a Sage version if needed, e.g. `11.*` |
+| Install the Sage theme? | yes | If no, the Sage steps are skipped (see below) |
+| Sage version constraint | blank = latest stable | Only asked with Sage. Pins a Sage version if needed, e.g. `11.*` |
 | Install ACF PRO? | yes | Downloads, installs and activates Advanced Custom Fields PRO |
 | ACF PRO licence key | — (hidden, required) | Written **only** to `.env` as `ACF_PRO_LICENSE` |
 | Site URL the licence is activated for | `https://<production domain>` | Needed by ACF's Composer repository to download the plugin |
 | Push to GitHub? | yes | Connects the project to a repository |
 | GitHub user/organisation | `pablorica` | Builds the suggested repository URL |
 | Repository URL | `git@github.com:<org>/<slug>.git` | `origin` remote |
-| Start Node dev server at the end? | yes | Runs `docker compose --profile dev up node` |
+| Start Node dev server at the end? | yes | Only asked with Sage. Runs `docker compose --profile dev up node` |
 
 The script warns you when a port is already in use. Passwords can't contain a single quote (`'`).
 
 **Example ports** (Skelly & Couch): SSL `8465`, phpMyAdmin `8565`, Node `5265`.
+
+### Without Sage
+
+If you answer **no** to *Install the Sage theme?*, the script:
+
+- doesn't copy `docs/SAGE.md`, `docs/PostCSS.md` or `docs/ALPINE.md`, and doesn't need the custom `vite.config.js` in the template
+- doesn't run `composer create-project`, copy the Vite config or activate a theme, so WordPress keeps its default theme
+- doesn't offer to start the Node dev server
+
+Everything else (Docker stack, `.env`, salts, WordPress install, ACF PRO, staging configs, GitHub) runs as normal. The theme folder name is still asked, because `.env` (`WORDPRESS_THEMENAME`, `VITE_PATH`) and `.gitignore` use it.
+
+> **Node without Sage:** the template's `.env` sets `COMPOSE_PROFILES=dev`, so a plain `docker compose up -d` also starts `node`, which has no theme to build. Start the services by name (`docker compose --profile dev up -d mysql wordpress phpmyadmin caddy`), or remove `node` from that project's `docker-compose.yml`.
 
 ---
 
@@ -103,7 +123,7 @@ The script warns you when a port is already in use. Passwords can't contain a si
 
 1. **Pre-flight checks.** It checks that docker, docker compose, mkcert, git and perl are installed and that Docker is running. It also checks that every template file exists and that the project folder doesn't exist yet or is empty.
 2. **Project folder and SSL certificates.** It creates `~/Dockers/<slug>/certs` and runs `mkcert` for `<slug>.localhost` and `pma.<slug>.localhost`.
-3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`). This includes the Sage runbook (`docs/SAGE.md`), the custom CSS guide (`docs/PostCSS.md`) and the Alpine.js guide (`docs/ALPINE.md`).
+3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`). With Sage, this includes the Sage runbook (`docs/SAGE.md`), the custom CSS guide (`docs/PostCSS.md`) and the Alpine.js guide (`docs/ALPINE.md`).
 4. **Creates `.env`** from `.env.example`:
    - replaces `default` with the slug and `template` with the theme name
    - replaces ports `8443`, `8081` and `5173` with the new ones
@@ -117,15 +137,15 @@ The script warns you when a port is already in use. Passwords can't contain a si
    - **`nginx.conf.staging`** and **`apache.conf.staging`**: the staging domain, the project folder on the server, and the WordPress and phpMyAdmin ports (see [Staging server](#staging-server-nginx-or-apache)).
 5. **Starts Docker.** It pulls the images, then starts `mysql`, `wordpress`, `phpmyadmin` and `caddy` (Caddy is in the `dev` profile, so it's started by name). Then it waits until MySQL accepts the WordPress database user.
 6. **Installs WordPress** (optional). It uses the `wpcli` service to run `wp core install` and set **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
-7. **Installs Sage with Composer.** It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and replaces Sage's default `vite.config.js` with the custom one from the template project. That one reads `APP_URL`, `NODE_PORT`, `VITE_PATH` and the other variables set in `docker-compose.yml` (see `docs/SAGE.md`). It uses `sudo` only if a file belongs to the container user.
-8. **Activates the theme** with the `wpcli` service.
+7. **Installs Sage with Composer** (optional). It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and replaces Sage's default `vite.config.js` with the custom one from the template project. That one reads `APP_URL`, `NODE_PORT`, `VITE_PATH` and the other variables set in `docker-compose.yml` (see `docs/SAGE.md`). It uses `sudo` only if a file belongs to the container user.
+8. **Activates the theme** with the `wpcli` service (only with Sage).
    - **ACF PRO** (optional): downloads the plugin from ACF's official Composer repository. It runs in a temporary folder inside the `composer` container, so nothing is added to the theme's `composer.json`. It copies the plugin to `wp-content/plugins/advanced-custom-fields-pro`, then activates it with WP-CLI. The licence then activates automatically from `.env`, if the template is set up for it (see [ACF PRO licence](#acf-pro-licence)).
 9. **GitHub** (optional):
     - runs `git init` and adds the remote
     - if the repository already has commits (e.g. a LICENSE), adopts its history and adds any files that are missing locally, without overwriting your files
     - stops and asks before committing if `.env` or `certs/local-key.pem` isn't ignored by `.gitignore`
     - commits and runs `git push -u origin <branch>`
-10. **Summary.** It prints the URLs and credentials, then starts the Node dev server in the foreground (stop it with `Ctrl+C`).
+10. **Summary.** It prints the URLs and credentials. With Sage, it then starts the Node dev server in the foreground (stop it with `Ctrl+C`).
 
 If a command fails, the script stops and shows the line that failed.
 
@@ -341,7 +361,7 @@ TPL_PMA_PORT=8081
 TPL_NODE_PORT=5173
 ```
 
-If you add or rename files in `~/Dockers/default`, update the `TEMPLATE_FILES` list in the same block. Subfolders such as `docs/` are created automatically.
+If you add or rename files in `~/Dockers/default`, update the `TEMPLATE_FILES` list in the same block (files every project gets) or `SAGE_TEMPLATE_FILES` (files copied only with Sage). Subfolders such as `docs/` are created automatically.
 
 The custom Vite config's location in the template project is set in `TEMPLATE_VITE_CONFIG`:
 
