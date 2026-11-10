@@ -1,39 +1,14 @@
-# Pinaco
-
-A Statamic website for **[Pinaco](https://pinaco.art/)**
- 
-based in [Statamic Starter Kit](https://github.com/pablorica/statamic_starter_kit) 
-
-
-[![version](https://img.shields.io/badge/version-1.1.0-green.svg)](https://semver.org)
-
-
-## Production version
-
-[https://pinaco.art/](https://pinaco.art/) 
-
-
-## Staging version
-
-[https://pinaco.codigo.co.uk/](https://pinaco.codigo.co.uk/) 
-
-- login:    pinaco
-- password: tmstudioqa
-
-### Public and content folders
-
-- [https://pinaco.art/content.last.tar.gz](https://pinaco.art/content.last.tar.gz)
-
-- [https://pinaco.art/public.last.tar.gz](https://pinaco.art/public.last.tar.gz)
+# Statamic
 
 
 ## Installation instructions
 
 1. run `composer install`
 2. run `npm install`
-3. Create supersuser
+3. Create a superuser
 	- run `php please make:user` and follow the instructions
-4.  `npm run watch` or `npm run dev` to start the development server
+4. `npm run dev` to start the development server (`npm run watch` is an alias of the same command)
+5. `npm run build` to compile the production files into `public/build`
 
 ## Compilation errors
 
@@ -42,6 +17,7 @@ based in [Statamic Starter Kit](https://github.com/pablorica/statamic_starter_ki
 #### Cannot read properties
 
 If there is a Vite Error when running
+
 ```bash
 ➜  npm run build
 
@@ -55,10 +31,11 @@ TypeError: Cannot read properties of undefined (reading 'startsWith')
 
 **Solution**
 
-It can be due a wrong value in .env
+It can be due to a wrong value in `.env`
 `APP_URL="http://wrongsite.co.uk"`
 
-Or a wrog hot file in public, in that case delete it
+Or a leftover `hot` file in `public` (created by the dev server). In that case delete it
+
 ```bash
 rm public/hot
 ```
@@ -94,28 +71,93 @@ Error: Unable to find Valet certificate files for your host [artform.localhost].
 
 **Solution**
 
-This is becasue the local server has a SSL certificate not recognizable by Laravel. Probably the server is managed by MAMP and Laravel was expecting Valet.
+This is because the local server has a SSL certificate not recognizable by Laravel. Probably the server is managed by MAMP and Laravel was expecting Valet.
 
-In that case simply remove the SSL from youyr local server and use HTTP instead of HTTPS.
+In that case simply remove the SSL from your local server and use HTTP instead of HTTPS.
 
 ## Site errors
 
 ### 403 Forbidden
 
 The home page is not loading and the error is 403 Forbidden. 
-Check that the swerver configuration is pointing to the correct folder: `public` 
+Check that the server configuration is pointing to the correct folder: `public` 
 
 ## Additional commands
 
 ### Clear cache and static files
 
+Run these from the `statamic/` folder. `php please` is Statamic's command-line tool and `php artisan` is Laravel's (Statamic is built on Laravel). `please` also accepts any Laravel command, so `php please cache:clear` and `php artisan cache:clear` are the same command: you only need one.
+
 ```bash
 php please stache:clear
 php please static:clear
-php please cache:clear
 php artisan cache:clear
+php artisan config:clear
+php artisan view:clear
+php artisan route:clear
+php artisan optimize        # production only, run it last
 ```
-Reference to [Statamic Cache](https://statamic.dev/static-caching#by-force)
+
+#### What each command does
+
+**Statamic caches**
+
+| Command | What it does | When you need it |
+|---|---|---|
+| `php please stache:clear` | Clears the **stache**, Statamic's index of all content (entries, globals, navigation…). It rebuilds itself on the next request. | After editing files in `content/` directly (e.g. a search and replace), or when content looks out of date. |
+| `php please static:clear` | Clears the **static cache**: whole pages saved as ready-made HTML, if static caching is enabled. | After any content or template change, so visitors don't get old saved pages. Harmless if static caching is off. |
+| `php please glide:clear` | Deletes the resized/cropped image cache (Glide), in `public/img/containers/…` or `storage/statamic/glide`. | Rarely: only if resized images are wrong. **Caution:** this cache is what made the image recovery below possible. Don't clear it unless the original images are backed up. |
+
+**Laravel caches**
+
+| Command | What it does | When you need it |
+|---|---|---|
+| `php artisan cache:clear` | Empties the general application cache (anything saved with Laravel's cache, such as fetched data or computed values). | When something cached looks stale. |
+| `php artisan config:clear` | Removes the cached copy of the configuration (`config/*.php` combined with `.env`). | After changing `.env` or anything in `config/` (e.g. mail settings). |
+| `php artisan view:clear` | Deletes the compiled templates (Antlers/Blade views turned into PHP). | After template changes. |
+| `php artisan route:clear` | Removes the cached list of URLs (routes). | After route changes, or if a page returns 404 when it shouldn't. |
+
+**Rebuild and speed up**
+
+| Command | What it does | When you need it |
+|---|---|---|
+| `composer dump-autoload` | Regenerates Composer's class map (which file each PHP class lives in). | Only after adding, renaming or removing PHP classes (e.g. a new modifier in `app/Modifiers`) or updating packages. Not needed for template, CSS or content changes. |
+| `php artisan optimize` | Rebuilds the config and route caches in one go so the site runs a little faster. | Last, on production, after the clears above. |
+
+> **Order matters:** run `optimize` after the clears. While its config cache is in place, later edits to `.env` are ignored until you run `php artisan config:clear` (or `optimize` again).
+
+#### Which ones for which change
+
+| Change | Commands |
+|---|---|
+| Content edited by hand in `content/` | `stache:clear`, `static:clear` |
+| Templates / CSS / JS (new build) | `view:clear`, `static:clear` |
+| `.env` or `config/` | `config:clear` (then `optimize` on production) |
+| New PHP classes or packages | `composer dump-autoload`, then `optimize` on production |
+| "Reset everything" after a deploy | all of the above, `optimize` last |
+
+None of these commands touches the content files themselves.
+
+#### In Docker
+
+Prefix each command with `docker compose exec -u www-data <service>`, run from the folder with the `docker-compose.yml`:
+
+```bash
+docker compose exec -u www-data statamic php please stache:clear
+docker compose exec -u www-data statamic php please static:clear
+docker compose exec -u www-data statamic php artisan cache:clear
+docker compose exec -u www-data statamic php artisan config:clear
+docker compose exec -u www-data statamic composer dump-autoload
+docker compose exec -u www-data statamic php artisan view:clear
+docker compose exec -u www-data statamic php artisan route:clear
+docker compose exec -u www-data statamic php artisan optimize
+```
+
+- `docker compose exec` runs a command inside a container that is already running.
+- `-u www-data` runs it as the same user as PHP/the web server, so any cache files it creates stay writable by the site. Running as root can leave root-owned files that the site (and the control panel) can't write to.
+- `statamic` is the service name in `docker-compose.yml`. Older projects use `app`; check with `docker compose ps`.
+
+Reference: [Statamic static caching](https://statamic.dev/static-caching#by-force)
 
 ## Environment file contents (*.env* file)
 
@@ -123,19 +165,19 @@ Reference to [Statamic Cache](https://statamic.dev/static-caching#by-force)
 
 ## Tailwind Configuration
 
-[TAILWIND.md](https://github.com/TsevdosMcNeil/pinaco/blob/main/docs/TAILWIND.md)
+[TAILWIND.md](docs/TAILWIND.md)
 
 ---
 
 ## Add JS Libraries
 
-[JSLIBRARIES.md](https://github.com/TsevdosMcNeil/pinaco/blob/main/docs/JSLIBRARIES.md)
+[JSLIBRARIES.md](docs/JSLIBRARIES.md)
 
 ---
 
 ## Livewire
 
-[LIVEWIRE.md](https://github.com/TsevdosMcNeil/pinaco/blob/main/docs/LIVEWIRE.md)
+[LIVEWIRE.md](docs/LIVEWIRE.md)
 
 ---
 
@@ -180,19 +222,18 @@ Since a **Collection** doesn't automatically generate an index page, you need to
 #### **Option 1: Using Statamic’s Navigation UI**
 1. **Go to** Statamic Control Panel → **Navigation**.
 2. Click on the **Primary Navigation (or your nav set)**.
-3. Click **"Add Item"** → Select **"Entry"**.
-4. Choose **"Manual URL"** and enter `/projects` as the URL.
-5. Set the **label** to `"Projects"`, then **Save**.
+3. Click **"Add Nav Item"** (a manual link, rather than "Link to Entry").
+4. Enter `/projects` as the URL and `Projects` as the title, then **Save**.
 
 #### **Option 2: Add It Manually in Your Template**
 If you're manually rendering the navigation, modify your nav template (`resources/views/partials/navigation.antlers.html`):
 
 ```antlers
 <ul>
-    {{ nav from="main_navigation" }}
+    {{ nav:main_navigation }}
         <li><a href="{{ url }}">{{ title }}</a></li>
-    {{ /nav }}
-    <li><a href="/projects">Projects</a></li>  {# Manually add the Projects link #}
+    {{ /nav:main_navigation }}
+    <li><a href="/projects">Projects</a></li>  {{# Manually add the Projects link #}}
 </ul>
 ```
 
@@ -240,7 +281,7 @@ You can use Antlers logic to loop through parent terms and their children.
 
 ```antlers
 {{ taxonomy:locations }}
-    {{ if no_parent_location }}
+    {{ if !parent_location }}
         <h2>{{ title }}</h2>
 
         {{ taxonomy:locations where="parent_location:id == {id}" }}
@@ -329,7 +370,7 @@ composer require eminos/statamic-tabs
 
 ## Instagram
 
-[INSTAGRAM.md](https://github.com/TsevdosMcNeil/pinaco/blob/main/docs/INSTAGRAM.md)
+[INSTAGRAM.md](docs/INSTAGRAM.md)
 
 ---
 
@@ -338,121 +379,10 @@ composer require eminos/statamic-tabs
 
 Copy the `statamic/env.example` file to `.env`
 
-The following is a local example that uses file caching:
-
-```env
-APP_NAME="Pinaco"
-APP_ENV=local
-APP_KEY="base64:XORaj66Nw/Ikq7MdCVXKWKn10JRxRfyn8ZvFitH9B+s="
-APP_DEBUG=true
-APP_URL="http://pinaco.localhost"
-
-DEBUGBAR_ENABLED=false
-
-LOG_CHANNEL=stack
-
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
-QUEUE_CONNECTION=sync
-SESSION_DRIVER=file
-SESSION_LIFETIME=120
-
-REDIS_HOST=127.0.0.1
-REDIS_DATABASE=
-REDIS_PASSWORD=null
-REDIS_PORT=6379
-
-MAIL_MAILER=smtp
-MAIL_HOST=0.0.0.0
-MAIL_PORT=1025
-MAIL_USERNAME=testuser
-MAIL_PASSWORD=testpwd
-MAIL_ENCRYPTION=null
-MAIL_FROM_ADDRESS=null
-MAIL_FROM_NAME="${APP_NAME}"
-
-IMAGE_MANIPULATION_DRIVER=imagick
-
-STATAMIC_LICENSE_KEY=
-STATAMIC_THEME=business
-
-STATAMIC_API_ENABLED=true
-STATAMIC_REVISIONS_ENABLED=false
-
-STATAMIC_GIT_ENABLED=false
-STATAMIC_GIT_PUSH=false
-STATAMIC_GIT_DISPATCH_DELAY=5
-
-SAVE_CACHED_IMAGES=true
-STATAMIC_CACHE_TAGS_ENABLED=false
-STATAMIC_STACHE_WATCHER=true
-STATAMIC_STATIC_CACHING_STRATEGY=null
-
-#STATAMIC_CUSTOM_CMS_NAME=
-#STATAMIC_CUSTOM_LOGO_OUTSIDE_URL=
-STATAMIC_CUSTOM_LOGO_OUTSIDE_URL="/visuals/pinaco.svg"
-#STATAMIC_CUSTOM_FAVICON_URL=
-#STATAMIC_CUSTOM_CSS_URL=
-```
 
 ### Production
 
-Dump your .env values here with sensitive data removed. The following is a production example that uses full static caching:
-
-```env
-APP_NAME="Pinaco"
-APP_ENV=production
-APP_KEY="base64:XORaj66Nw/Ikq7MdCVXKWKn10JRxRfyn8ZvFitH9B+s="
-APP_DEBUG=false
-APP_URL="https://pinaco.co.uk"
-
-DEBUGBAR_ENABLED=false
-
-LOG_CHANNEL=stack
-
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
-QUEUE_CONNECTION=redis
-SESSION_DRIVER=file
-SESSION_LIFETIME=120
-
-REDIS_HOST=127.0.0.1
-REDIS_DATABASE=
-REDIS_PASSWORD=null
-REDIS_PORT=6379
-
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.postmarkapp.com
-MAIL_PORT=587
-MAIL_ENCRYPTION=tls
-MAIL_USERNAME=
-MAIL_PASSWORD=
-MAIL_FROM_ADDRESS=
-MAIL_FROM_NAME="${APP_NAME}"
-
-IMAGE_MANIPULATION_DRIVER=imagick
-
-STATAMIC_LICENSE_KEY=
-STATAMIC_THEME=business
-
-STATAMIC_API_ENABLED=false
-STATAMIC_REVISIONS_ENABLED=false
-
-STATAMIC_GIT_ENABLED=true
-STATAMIC_GIT_PUSH=true
-STATAMIC_GIT_DISPATCH_DELAY=5
-
-STATAMIC_STATIC_CACHING_STRATEGY=full
-SAVE_CACHED_IMAGES=false
-STATAMIC_STACHE_WATCHER=false
-STATAMIC_CACHE_TAGS_ENABLED=true
-
-#STATAMIC_CUSTOM_CMS_NAME=
-STATAMIC_CUSTOM_LOGO_OUTSIDE_URL="/visuals/pinaco.svg"
-#STATAMIC_CUSTOM_LOGO_NAV_URL=
-#STATAMIC_CUSTOM_FAVICON_URL=
-#STATAMIC_CUSTOM_CSS_URL=
-```
+Dump your .env values here with sensitive data removed. 
 
 ## NGINX config
 
@@ -478,7 +408,7 @@ map $sent_http_content_type $expires {
 ---
 ## Updating Statamic
 
-[UPDATING.md](https://github.com/pablorica/pinaco/blob/main/docs/UPDATING.md)
+[UPDATING.md](docs/UPDATING.md)
 
 ---
 
@@ -520,14 +450,15 @@ docker compose exec node npm run dev -- --host
 docker compose exec node npm run build
 ```
 
-If you have issues runnig those commands, Run a one-off install in the node image (no need for the service to be running):
+If you have issues running those commands, Run a one-off install in the node image (no need for the service to be running):
+
 ```bash
 # from the repo root where your compose file is
 docker compose run --rm -w /var/www/html node npm install
 ```
 
 
-#### Udpate vite.config.js
+#### Update vite.config.js
 
 ```javascript
 import laravel from 'laravel-vite-plugin'
@@ -597,11 +528,11 @@ export default defineConfig(({ command, mode }) => {
 docker compose exec app composer update
 docker compose exec node npm update
 
-## Delete public/hot and fluch caches
-docker compose exec app php please stache:clear
-docker compose exec app php please static:clear
-docker compose exec app php please cache:clear
-docker compose exec app php artisan cache:clear
+## Delete public/hot and flush caches
+rm -f public/hot
+docker compose exec -u www-data app php please stache:clear
+docker compose exec -u www-data app php please static:clear
+docker compose exec -u www-data app php artisan cache:clear
 
 docker compose exec node npm run dev
 ```
@@ -648,17 +579,3 @@ Statamic has no database by default. Everything editable in the control panel (e
 * [Statamic Peak](https://statamic.com/starter-kits/studio1902/peak)
   
 
----
-
-
-## Copyright and License
-
-Copyright 2024 Pinaco website released under the [MIT](https://github.com/pablorica/pinaco/blob/main/LICENSE) license.
-
-## Versioning
-
-We use [SemVer](https://semver.org/) for versioning.
-
-### Changelog
-
-[CHANGELOG.md](https://github.com/pablorica/pinaco/blob/main/CHANGELOG.md)
