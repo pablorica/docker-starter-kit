@@ -1,10 +1,20 @@
-# compose.remote.yml
+# docker-compose.remote.yml — staging overrides, used together with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d
+# Images, PHP limits (uploads.ini) and database settings come from docker-compose.yml,
+# so local and staging run the same stack.
 services:
+  mysql:
+    mem_limit: 256m
+
   wordpress:
+    mem_limit: 768m        # above PHP's 512M, so big exports aren't killed
     ports:
       - "127.0.0.1:${WORDPRESS_SSL_PORT:-8080}:80"
+    volumes:
+      # React build at the web root, WordPress in /api: same layout as public_html on 123reg
+      - ./frontend/build:/var/www/html
 
   phpmyadmin:
-    # profiles: ["tools"] Optional, to run phpmyadmin only with this profile
+    profiles: ["tools"]   # start only when needed: docker compose --profile tools up -d phpmyadmin
     ports:
       - "127.0.0.1:${PHPMYADMIN_PORT:-8081}:80"

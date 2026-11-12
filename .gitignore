@@ -165,6 +165,9 @@ statamic/*
 !CHANGELOG.md
 !docs/
 
+# Mysql config
+!mysql-lowmem.cnf
+
 # track example files, if they exist
 !*.example
 

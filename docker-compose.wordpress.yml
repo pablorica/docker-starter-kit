@@ -59,6 +59,8 @@ services:
     restart: unless-stopped
     volumes: ## Important to make the database persistent and avoid data loss on container restart. Also allows pre-seeding with an existing database if needed.
       - mysql_data:/var/lib/mysql
+      # Low-memory settings, shared by local and staging (useful when the server has little RAM)
+      - ./mysql-lowmem.cnf:/etc/mysql/conf.d/zz-lowmem.cnf:ro
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
