@@ -191,6 +191,7 @@ statamic/*
 
 
 # Wordpress: track these mu-plugins, plugins, and themes
+!env.wordpress
 
 
 # WPML Plugin: These files were updated to prevent fatal errors caused by incompatibilities between the WPML plugin and SAGE

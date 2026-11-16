@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
 
+## [0.7.0] - 2026-11-16
+
+### Added
+- `docker-compose.wordpress.yml`: shared `x-wp-env` block, so `wordpress` and `wpcli` always get the same environment (`wpcli` now also gets `APP_ENV` and `ACF_PRO_LICENSE`).
+- `docker-compose.wordpress.yml`: MySQL healthcheck now also gates `phpmyadmin` and `wpcli`; the root password is read inside the container instead of being written into the config.
+- `new-wp-sage.sh`: asks whether to use the low-memory MySQL settings (default: yes) and writes `./mysql.cnf` (the contents of `mysql-lowmem.cnf`, or an empty `[mysqld]` = MySQL defaults).
+- `new-wp-sage.sh`: checks that `wp-config.php`, `uploads.ini`, `Caddyfile` and `mysql.cnf` exist as files before starting Docker.
+- `nginx.conf.staging` and `apache.conf.staging`: block hidden files and folders (`.git`, `.env`, `.htaccess`…) with a 404, except `.well-known` (Let's Encrypt).
+
+### Changed
+- Renamed `.env.example` to `env.wordpress`. `new-wp-sage.sh` copies it into new projects and creates `.env` from it.
+- `env.wordpress`: values derived from `PROJECT_NAME`, the ports and the theme name (`MYSQL_DATABASE`, `WORDPRESS_HOME`, `CADDY_HOSTNAME`, `VITE_PATH`) instead of being repeated.
+- `docker-compose.wordpress.yml`: the Compose project, container names (`<project>_mysql`, `_wordpress`, `_phpmyadmin`, `_caddy`, `_node`) and volumes come from `PROJECT_NAME`; the database host is fixed as `mysql:3306`.
+- `docker-compose.wordpress.yml`: `wpcli` moved to the `tools` profile, next to `composer` (`docker compose run --rm wpcli …` starts it on demand).
+- `docker-compose.wordpress.yml`: single-file mounts (`wp-config.php`, `uploads.ini`, `Caddyfile`, `mysql.cnf`) use the long bind syntax, so Docker refuses to start if a file is missing instead of creating an empty folder.
+- `apache.conf.staging`: `/logs/` now returns 404 (was 403), the same as `nginx.conf.staging`. The `Require all denied` rule stays as a fallback.
+- `new-wp-sage.sh`: the MySQL readiness check uses the values inside the container, so it works with `${...}` values in `.env`.
+- `mysql-lowmem.cnf`: generic comments, and a warning about `max_connections = 40` on servers with real traffic.
+- `docs/AUTOMATED-SAGE-DOCKER-SETUP.md`: updated for all of the above, with a new "MySQL settings (`mysql.cnf`)" section, the low-memory question, derived `.env` values (`docker compose config --environment` to see them), the `x-wp-env` block in the ACF and salts sections, the 404 rules for `/logs/` and hidden files, and two new troubleshooting rows.
+
+### Removed
+- `env.wordpress`: `MYSQL_HOST`, `MYSQL_CONTAINER`, `WORDPRESS_CONTAINER`, `PHPMYADMIN_CONTAINER`, `WPCLI_CONTAINER`, `CADDY_CONTAINER`, `NODE_CONTAINER` (now derived in `docker-compose.wordpress.yml`) and the commented `SAGE_*` lines.
+
+### Fixed
+- `mysql-lowmem.cnf` ended up as an empty folder in new projects: the script never copied it, so Docker created a folder at the mount path and MySQL silently ran with its default settings.
+- `nginx.conf.staging`: phpMyAdmin's basic-auth file pointed to `/data/webs/__PROJECT__/` instead of `/srv/docker/__PROJECT__/` (as in `apache.conf.staging`).
+
 ## [0.6.8] - 2026-11-06
 
 ### Changed

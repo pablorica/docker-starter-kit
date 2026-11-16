@@ -22,6 +22,12 @@ server {
     return 404;
   }
 
+  # Block hidden files and folders in the web root (.git, .env, .htaccess…),
+  # except .well-known (Let's Encrypt and other standard checks).
+  location ~ /\.(?!well-known/) {
+    return 404;
+  }
+
   location / {
     proxy_pass http://127.0.0.1:__APP_PORT__;
     proxy_set_header Host              $host;
@@ -41,7 +47,7 @@ server {
   location ^~ /pma/ {
     # (optional but recommended) Basic auth
     auth_basic "Restricted";
-    auth_basic_user_file /data/webs/__PROJECT__/.htpasswd-pma;
+    auth_basic_user_file /srv/docker/__PROJECT__/.htpasswd-pma;
 
     # Strip /pma prefix when proxying
     proxy_pass http://127.0.0.1:__PMA_PORT__/;

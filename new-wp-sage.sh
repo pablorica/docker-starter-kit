@@ -26,14 +26,14 @@ DEFAULT_WP_EMAIL="pablo@codigo.co.uk"
 DEFAULT_GITHUB_ORG="pablorica"
 SAGE_PACKAGE="roots/sage"
 
-# Ports used in .env.example that get replaced per project
+# Ports used in env.wordpress that get replaced per project
 TPL_SSL_PORT=8443
 TPL_PMA_PORT=8081
 TPL_NODE_PORT=5173
 
 # "source in template dir : destination in project dir"
 TEMPLATE_FILES=(
-  ".env.example:.env.example"
+  "env.wordpress:env.wordpress"
   "docker-compose.wordpress.yml:docker-compose.yml"
   "docker-compose.wordpress.remote.yml:docker-compose.remote.yml"
   "Caddyfile.sage.example:Caddyfile"
@@ -45,6 +45,10 @@ TEMPLATE_FILES=(
   "apache.conf.staging:apache.conf.staging"
   "docker_sage:docker"
 )
+
+# Low-memory MySQL settings: copied to ./mysql.cnf when you answer yes
+# (otherwise ./mysql.cnf is an empty [mysqld] = MySQL defaults)
+TEMPLATE_MYSQL_LOWMEM="mysql-lowmem.cnf"
 
 # Copied only when Sage is installed
 SAGE_TEMPLATE_FILES=(
@@ -208,6 +212,7 @@ done
 
 ask_secret MYSQL_PASSWORD      "MySQL password for the WordPress DB user"
 ask_secret MYSQL_ROOT_PASSWORD "MySQL root password"
+ask_yn MYSQL_LOWMEM "Use low-memory MySQL settings ($TEMPLATE_MYSQL_LOWMEM; recommended for local + small staging servers)?" y
 while :; do
   ask PROD_DOMAIN "Production domain (CADDY_PRODUCTION_DOMAIN, e.g. beta.$PROJECT.tm-studio.co.uk)"
   [[ $PROD_DOMAIN =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] && break
@@ -259,6 +264,9 @@ done
 if [[ $DO_SAGE == y ]]; then
   [[ -f "$TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG" ]] || die "Missing template file: $TEMPLATE_DIR/$TEMPLATE_VITE_CONFIG"
 fi
+if [[ $MYSQL_LOWMEM == y ]]; then
+  [[ -f "$TEMPLATE_DIR/$TEMPLATE_MYSQL_LOWMEM" ]] || die "Missing template file: $TEMPLATE_DIR/$TEMPLATE_MYSQL_LOWMEM"
+fi
 if [[ -e $PROJECT_DIR ]] && [[ -n $(ls -A "$PROJECT_DIR" 2>/dev/null) ]]; then
   die "$PROJECT_DIR already exists and isn't empty."
 fi
@@ -271,6 +279,7 @@ cat <<EOF
     Theme         $( [[ $DO_SAGE == y ]] && echo "$THEME (Sage ${SAGE_VERSION:-latest stable})" || echo "no Sage (folder name $THEME used in .env / .gitignore)" )
     Ports         SSL $SSL_PORT · PMA $PMA_PORT · Node $NODE_PORT
     Production    $PROD_DOMAIN
+    MySQL         $( [[ $MYSQL_LOWMEM == y ]] && echo "low-memory settings ($TEMPLATE_MYSQL_LOWMEM)" || echo "MySQL defaults" )
     WP install    $DO_WP_INSTALL${WP_ADMIN_USER:+ (user: $WP_ADMIN_USER, $WP_ADMIN_EMAIL)}
     ACF PRO       $DO_ACF
     GitHub        ${GITHUB_REPO:-no}
@@ -298,16 +307,30 @@ for pair in "${COPY_FILES[@]}"; do
   info "$src -> $dst"
 done
 
+# MySQL settings file. It must exist as a FILE before Docker starts: a missing
+# bind-mount source used to make Docker create an empty folder with that name.
+if [[ $MYSQL_LOWMEM == y ]]; then
+  cp "$TEMPLATE_DIR/$TEMPLATE_MYSQL_LOWMEM" mysql.cnf
+  info "$TEMPLATE_MYSQL_LOWMEM -> mysql.cnf (low-memory MySQL settings)"
+else
+  printf '%s\n' \
+    "# Custom MySQL settings (mounted into /etc/mysql/conf.d/ by docker-compose.yml)." \
+    "# Empty = MySQL defaults. For low-memory settings, copy them from the template's $TEMPLATE_MYSQL_LOWMEM." \
+    "[mysqld]" > mysql.cnf
+  info "mysql.cnf created (MySQL defaults)"
+fi
+
 # ---------------------------------------------------------------------------
 # 3. .env
 # ---------------------------------------------------------------------------
 step "Creating .env"
-cp .env.example .env
+cp env.wordpress .env
 env_replace_all  "default"  "$PROJECT"
 env_replace_all  "template" "$THEME"
 env_replace_port "$TPL_SSL_PORT"  "$SSL_PORT"
 env_replace_port "$TPL_PMA_PORT"  "$PMA_PORT"
 env_replace_port "$TPL_NODE_PORT" "$NODE_PORT"
+set_env PROJECT_NAME            "$PROJECT"
 set_env WORDPRESS_SSL_PORT      "$SSL_PORT"
 set_env PHPMYADMIN_PORT         "$PMA_PORT"
 set_env NODE_PORT               "$NODE_PORT"
@@ -340,9 +363,7 @@ if ! grep -q 'WORDPRESS_AUTH_KEY' docker-compose.yml; then
   warn "Update the template (see 'WordPress salts' in AUTOMATED-SAGE-DOCKER-SETUP.md)."
 fi
 
-DB_USER=$(get_env MYSQL_USER || true)
-DB_NAME=$(get_env MYSQL_DATABASE || true)
-info "Done (DB user: ${DB_USER:-?}, DB name: ${DB_NAME:-?})"
+info "Done. Container names, MySQL database, local URLs and VITE_PATH follow PROJECT_NAME / the ports."
 
 # ---------------------------------------------------------------------------
 # 3b. Staging server configs (Nginx / Apache)
@@ -371,21 +392,27 @@ done
 # ---------------------------------------------------------------------------
 # 4. Docker stack
 # ---------------------------------------------------------------------------
+# Bind-mounted single files must exist as files (see docker-compose.yml)
+for f in wp-config.php uploads.ini Caddyfile mysql.cnf; do
+  [[ -f $f ]] || die "$f is missing or isn't a file (a folder?) in $PROJECT_DIR"
+done
+
 step "Starting Docker stack"
 # caddy and node are in the "dev" profile. Start caddy (and the services it
 # depends on) now; node starts at the end, once the theme exists.
+# wpcli and composer are in the "tools" profile: `docker compose run` starts them on demand.
 dc --profile dev pull
 dc --profile dev up -d mysql wordpress phpmyadmin caddy
 dc --profile dev ps
 
+# Uses the values Compose passed to the container, so ${...} in .env are already resolved
 db_ok() {
-  if [[ -n $DB_USER && -n $DB_NAME ]]; then
-    dc exec -T -e MYSQL_PWD="$MYSQL_PASSWORD" mysql mysql -u"$DB_USER" -e 'SELECT 1;' "$DB_NAME"
-  else
-    dc exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mysqladmin ping -uroot --silent
-  fi
+  dc exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" -e "SELECT 1;" "$MYSQL_DATABASE"'
 }
 wait_for "MySQL" 120 db_ok || die "MySQL didn't come up. Check: docker compose logs mysql"
+DB_USER=$(dc exec -T mysql printenv MYSQL_USER 2>/dev/null || true)
+DB_NAME=$(dc exec -T mysql printenv MYSQL_DATABASE 2>/dev/null || true)
+info "DB user: ${DB_USER:-?}, DB name: ${DB_NAME:-?}"
 
 # On its first start, the WordPress image copies the core files into ./wordpress
 # (in no fixed order), then hands over to the web server. Checking a single file

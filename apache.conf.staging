@@ -26,8 +26,16 @@
     ProxyPreserveHost On
     ProxyRequests Off
 
-    # ── Block the WordPress logs folder ─────────────────────────────────────────
+    # ── Block the WordPress logs folder and hidden files ─────────────────────────
     # debug.log / error.log live in the web root (mapped from ./logs).
+    # 404 instead of 403 so it doesn't reveal that they exist (same as nginx.conf.staging).
+    # mod_rewrite runs before ProxyPass, so these requests never reach WordPress.
+    RewriteEngine On
+    RewriteRule "^/logs/" - [R=404,L]
+    # Hidden files/folders (.git, .env, .htaccess…), except .well-known (Let's Encrypt)
+    RewriteRule "(^|/)\.(?!well-known/)" - [R=404,L]
+
+    # Fallback if mod_rewrite is ever disabled: deny (403) instead of proxying
     <Location "/logs/">
         Require all denied
     </Location>

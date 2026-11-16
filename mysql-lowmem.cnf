@@ -1,6 +1,14 @@
-# Low-memory MariaDB/MySQL settings (local + staging).
-# Mounted by docker-compose.yml into /etc/mysql/conf.d/. The site's database is ~12 MB,
-# so a 64 MB buffer pool is plenty, and performance_schema alone uses ~100+ MB.
+# Low-memory MySQL 8 settings, for local development and small staging servers.
+#
+# new-wp-sage.sh copies this file to ./mysql.cnf in the new project when you answer
+# "yes" to the low-memory question; docker-compose.yml mounts ./mysql.cnf into
+# /etc/mysql/conf.d/. Answer "no" and ./mysql.cnf is an empty [mysqld] = MySQL defaults.
+#
+# Sized for a typical brochure / small shop database (tens of MB): a 64 MB buffer pool
+# is plenty, and performance_schema alone uses ~100+ MB.
+#
+# Before using it on a production server with real traffic, check max_connections:
+# each Apache/PHP worker holds one connection, so 40 can cause "Too many connections".
 [mysqld]
 performance_schema      = OFF
 innodb_buffer_pool_size = 64M

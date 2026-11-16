@@ -30,12 +30,12 @@ On your machine:
 | git | Used to push to GitHub |
 | perl | Used to edit `.env` safely (preinstalled on macOS and most Linux) |
 
-Composer and WP-CLI **don't** need to be installed locally. They run through Docker, using the `composer` (profile `tools`) and `wpcli` services in `docker-compose.yml`.
+Composer and WP-CLI **don't** need to be installed locally. They run through Docker, using the `composer` and `wpcli` services in `docker-compose.yml` (both in the `tools` profile; `docker compose run` starts them on demand).
 
 You also need:
 
 - The template project at `~/Dockers/default` with these files:
-  `.env.example`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `gitignore.wordpress.example`, `nginx.conf.staging`, `apache.conf.staging`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md`, `docs/ALPINE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
+  `env.wordpress`, `docker-compose.wordpress.yml`, `docker-compose.wordpress.remote.yml`, `Caddyfile.sage.example`, `uploads.ini.example`, `wp-config.php.example`, `.editorconfig.example`, `gitignore.wordpress.example`, `nginx.conf.staging`, `apache.conf.staging`, `mysql-lowmem.cnf`, the `docker_sage/` folder, `docs/SAGE.md`, `docs/PostCSS.md`, `docs/ALPINE.md` and the custom Vite config at `wordpress/wp-content/themes/codigo/vite.config.js`.
 - An **empty** GitHub repository for the project (optional), and GitHub access through SSH keys or the `gh` CLI (see [Security notes](#security-notes)).
 
 ---
@@ -68,7 +68,7 @@ For a project without Sage (e.g. headless WordPress), pre-answer `DO_SAGE=n`. Ad
 DO_SAGE=n ./new-wp-sage.sh
 ```
 
-Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `DO_SAGE` (y/n), `SAGE_VERSION`, `DO_ACF` (y/n), `ACF_PRO_LICENSE`, `ACF_LICENSE_URL`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
+Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`, `SSL_PORT`, `PMA_PORT`, `NODE_PORT`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `MYSQL_LOWMEM` (y/n), `PROD_DOMAIN`, `DO_WP_INSTALL` (y/n), `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`, `DO_SAGE` (y/n), `SAGE_VERSION`, `DO_ACF` (y/n), `ACF_PRO_LICENSE`, `ACF_LICENSE_URL`, `DO_GIT` (y/n), `GITHUB_ORG`, `GITHUB_REPO`, `START_NODE` (y/n).
 
 ---
 
@@ -78,7 +78,7 @@ Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`,
 |---|---|---|
 | Dockers folder | `~/Dockers` | Parent folder for all projects |
 | Template project folder | `~/Dockers/default` | Source of the files that get copied |
-| Project slug | — | Folder name, local domain (`<slug>.localhost`) and the replacement for `default` in `.env` |
+| Project slug | — | Folder name, local domain (`<slug>.localhost`) and `PROJECT_NAME` in `.env`, which names the containers, volumes and database |
 | Site title | the slug | WordPress site title |
 | Theme folder name | `codigo` | Sage theme folder, `WORDPRESS_THEMENAME` and the replacement for `template` in `.env` |
 | WordPress SSL port | the highest port used in your other projects + 1 | `WORDPRESS_SSL_PORT` (replaces `8443`) |
@@ -86,6 +86,7 @@ Variable names: `DOCKERS_DIR`, `TEMPLATE_DIR`, `PROJECT`, `SITE_TITLE`, `THEME`,
 | Node/Vite port | SSL port − 3200 | `NODE_PORT` (replaces `5173`) |
 | MySQL password | generated if blank | `MYSQL_PASSWORD` |
 | MySQL root password | generated if blank | `MYSQL_ROOT_PASSWORD` |
+| Use low-memory MySQL settings? | yes | Writes `mysql.cnf` from `mysql-lowmem.cnf` (yes) or an empty `[mysqld]` = MySQL defaults (no). See [MySQL settings](#mysql-settings-mysqlcnf) |
 | Production domain | — (required) | `CADDY_PRODUCTION_DOMAIN`, e.g. `beta.skelly-couch.tm-studio.co.uk` or `freedmanhilmi.com` |
 | Install WordPress automatically? | yes | Runs the WordPress install with WP-CLI instead of the browser |
 | WP admin user | `pablo.rica` | WordPress admin account |
@@ -123,11 +124,12 @@ Everything else (Docker stack, `.env`, salts, WordPress install, ACF PRO, stagin
 
 1. **Pre-flight checks.** It checks that docker, docker compose, mkcert, git and perl are installed and that Docker is running. It also checks that every template file exists and that the project folder doesn't exist yet or is empty.
 2. **Project folder and SSL certificates.** It creates `~/Dockers/<slug>/certs` and runs `mkcert` for `<slug>.localhost` and `pma.<slug>.localhost`.
-3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`). With Sage, this includes the Sage runbook (`docs/SAGE.md`), the custom CSS guide (`docs/PostCSS.md`) and the Alpine.js guide (`docs/ALPINE.md`).
-4. **Creates `.env`** from `.env.example`:
-   - replaces `default` with the slug and `template` with the theme name
+3. **Copies the template files** from `~/Dockers/default`, renaming them (e.g. `Caddyfile.sage.example` becomes `Caddyfile`). With Sage, this includes the Sage runbook (`docs/SAGE.md`), the custom CSS guide (`docs/PostCSS.md`) and the Alpine.js guide (`docs/ALPINE.md`). It also writes **`mysql.cnf`**: the low-memory settings, or an empty `[mysqld]` (see [MySQL settings](#mysql-settings-mysqlcnf)).
+4. **Creates `.env`** from `env.wordpress`:
+   - replaces `default` with the slug (`PROJECT_NAME`) and `template` with the theme name (`WORDPRESS_THEMENAME`)
    - replaces ports `8443`, `8081` and `5173` with the new ones
-   - sets `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `WORDPRESS_THEMENAME` and `CADDY_PRODUCTION_DOMAIN`
+   - sets `PROJECT_NAME`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `WORDPRESS_THEMENAME` and `CADDY_PRODUCTION_DOMAIN`
+   - leaves the **derived values** as they are: `MYSQL_DATABASE`, `WORDPRESS_HOME`, `CADDY_HOSTNAME` and `VITE_PATH` use `${PROJECT_NAME}`, `${WORDPRESS_SSL_PORT}` and `${WORDPRESS_THEMENAME}`, which Docker Compose fills in. Container names (`<slug>_mysql`, `_wordpress`, `_phpmyadmin`, `_caddy`, `_node`) and the database host (`mysql:3306`) come from `docker-compose.yml`, so they aren't in `.env` at all
    - writes passwords in single quotes, so characters like `$`, `&` and `%` work. Docker Compose would otherwise read `$m` as a variable.
 
    - generates **unique WordPress salts** for the project (`WORDPRESS_AUTH_KEY` … `WORDPRESS_NONCE_SALT`, 64 random characters each). See [WordPress salts](#wordpress-salts).
@@ -135,7 +137,7 @@ Everything else (Docker stack, `.env`, salts, WordPress install, ACF PRO, stagin
    It then fills in the placeholders in the other template files:
    - **`.gitignore`**: `__THEME__` becomes the theme folder name, so git tracks `wordpress/wp-content/themes/<theme>/` and ignores its `vendor/`, `node_modules/` and so on.
    - **`nginx.conf.staging`** and **`apache.conf.staging`**: the staging domain, the project folder on the server, and the WordPress and phpMyAdmin ports (see [Staging server](#staging-server-nginx-or-apache)).
-5. **Starts Docker.** It pulls the images, then starts `mysql`, `wordpress`, `phpmyadmin` and `caddy` (Caddy is in the `dev` profile, so it's started by name). Then it waits until MySQL accepts the WordPress database user.
+5. **Starts Docker.** It first checks that `wp-config.php`, `uploads.ini`, `Caddyfile` and `mysql.cnf` exist as **files** (Docker turns a missing mount into an empty folder otherwise). It pulls the images, then starts `mysql`, `wordpress`, `phpmyadmin` and `caddy` (Caddy is in the `dev` profile, so it's started by name). Then it waits until MySQL accepts the WordPress database user, using the values inside the MySQL container (so the `${...}` values in `.env` are already resolved).
 6. **Installs WordPress** (optional). It uses the `wpcli` service to run `wp core install` and set **Discourage search engines** (`blog_public = 0`). If this fails, it tells you to finish the install in the browser.
 7. **Installs Sage with Composer** (optional). It removes any existing `wordpress/wp-content/themes/<theme>` folder, then runs `composer create-project roots/sage <theme>` through the `composer` service, as your user so the files aren't owned by root. This installs the latest stable Sage (or your version constraint) **and** `vendor/` in one step. Then it removes any Sage developer files that are left (`.github`, `.editorconfig`, `.gitattributes`, `.gitignore`) and replaces Sage's default `vite.config.js` with the custom one from the template project. That one reads `APP_URL`, `NODE_PORT`, `VITE_PATH` and the other variables set in `docker-compose.yml` (see `docs/SAGE.md`). It uses `sudo` only if a file belongs to the container user.
 8. **Activates the theme** with the `wpcli` service (only with Sage).
@@ -155,13 +157,12 @@ If a command fails, the script stops and shows the line that failed.
 
 The script installs ACF PRO, but **activating the licence** automatically needs these one-off changes to the template project (`~/Dockers/default`). Without them, ACF PRO is still installed, and you enter the key in **ACF → Updates**.
 
-**1. `docker-compose.wordpress.yml`**: pass the key to the `wordpress` service:
+**1. `docker-compose.wordpress.yml`**: pass the key to WordPress and WP-CLI. The current template already does this in the shared `x-wp-env` block:
 
 ```yaml
-  wordpress:
-    environment:
-      # ...existing variables...
-      ACF_PRO_LICENSE: ${ACF_PRO_LICENSE:-}
+x-wp-env: &wp-env
+  # ...existing variables...
+  ACF_PRO_LICENSE: ${ACF_PRO_LICENSE:-}
 ```
 
 **2. `wp-config.php.example`**: define the constant ACF reads, **before** the `require_once ABSPATH . 'wp-settings.php';` line:
@@ -175,7 +176,7 @@ if ( $acf_pro_license && ! defined( 'ACF_PRO_LICENSE' ) ) {
 unset( $acf_pro_license );
 ```
 
-**3. `.env.example`** (optional): add an empty placeholder so every project has the variable:
+**3. `env.wordpress`** (optional, already in the current template): add an empty placeholder so every project has the variable:
 
 ```ini
 ACF_PRO_LICENSE=
@@ -207,25 +208,27 @@ WORDPRESS_NONCE_SALT='…'
 
 `wp-config.php` already reads them (`getenv('WORDPRESS_AUTH_KEY')` …). For them to reach WordPress, the template needs these one-off changes (`~/Dockers/default`). Without them, the script warns you and WordPress keeps using the fallback values in `wp-config.php`.
 
-**1. `docker-compose.wordpress.yml`**: pass them to the `wordpress` **and** `wpcli` services:
+**1. `docker-compose.wordpress.yml`**: pass them to the `wordpress` **and** `wpcli` services. The current template does this once, in the shared `x-wp-env` block that both services use (`<<: *wp-env`):
 
 ```yaml
+x-wp-env: &wp-env
+  # ...existing variables...
+  WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY:-}
+  WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY:-}
+  WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY:-}
+  WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY:-}
+  WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT:-}
+  WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT:-}
+  WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT:-}
+  WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT:-}
+
+services:
   wordpress:
     environment:
-      # ...existing variables...
-      WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY:-}
-      WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY:-}
-      WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY:-}
-      WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY:-}
-      WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT:-}
-      WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT:-}
-      WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT:-}
-      WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT:-}
-
+      <<: *wp-env
   wpcli:
     environment:
-      # ...existing variables...
-      # (same eight lines as above)
+      <<: *wp-env
 ```
 
 **2. `wp-config.php.example`** (recommended): remove the hardcoded fallback salts, so no project ever shares them through the template repo:
@@ -243,7 +246,7 @@ define('NONCE_SALT',       getenv('WORDPRESS_NONCE_SALT')       ?: '');
 
 If a value is missing, WordPress then generates a random one itself and stores it in the database, which is safer than a shared fallback.
 
-**3. `.env.example`** (optional): add the eight variables, empty. The script fills them in.
+**3. `env.wordpress`** (optional, already in the current template): add the eight variables, empty. The script fills them in.
 
 ### New salts for staging or production
 
@@ -280,7 +283,12 @@ Both are **templates with placeholders**. The script fills them in for each proj
 
 > The ports come from `docker-compose.remote.yml`. On the server it publishes WordPress on `127.0.0.1:${WORDPRESS_SSL_PORT}` and phpMyAdmin on `127.0.0.1:${PHPMYADMIN_PORT}`, so the proxy uses the same two ports. If you change them in the server's `.env`, change them in the Nginx/Apache config too.
 
-Both files **block `/logs/`**, because `debug.log` and `error.log` live in the web root. Nginx returns `404`. Apache returns `403` (`Require all denied`).
+Both files return **`404`** for:
+
+- **`/logs/`**, because `debug.log` and `error.log` live in the web root.
+- **Hidden files and folders** (`.git`, `.env`, `.htaccess`…), except `/.well-known/` so Let's Encrypt keeps working. A `.git` folder in the web root would otherwise let anyone download the whole repository.
+
+Apache does it with `RewriteRule … [R=404]`, which runs before `ProxyPass`; a `Require all denied` on `/logs/` stays as a fallback (`403`) in case `mod_rewrite` is off.
 
 ### Installing it on the server
 
@@ -311,10 +319,11 @@ phpMyAdmin is protected with basic auth. Create the password file once:
 sudo htpasswd -c /srv/docker/<project>/.htpasswd-pma <user>
 ```
 
-Check that the logs are blocked:
+Check that the logs and hidden files are blocked:
 
 ```bash
-curl -I https://<prod-domain>/logs/debug.log   # 404 (Nginx) or 403 (Apache)
+curl -s -o /dev/null -w '%{http_code}\n' https://<prod-domain>/logs/debug.log   # 404
+curl -s -o /dev/null -w '%{http_code}\n' https://<prod-domain>/.git/HEAD        # 404
 ```
 
 ### The server's `.env`
@@ -331,6 +340,8 @@ Start from a copy of the local `.env`, then change these values:
 | `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` | new passwords (recommended) | Don't reuse the local ones. |
 | `ACF_PRO_LICENSE` | your key (if you use ACF PRO) | Activates the licence on the server too. |
 
+`WORDPRESS_HOME` is derived from `PROJECT_NAME` and the port in the local `.env` (`https://${PROJECT_NAME}.localhost:${WORDPRESS_SSL_PORT}`), so on the server replace the whole line with the public URL. Also check `mysql.cnf` (see [MySQL settings](#mysql-settings-mysqlcnf)).
+
 Then start the stack with both compose files. The second one publishes the ports on `127.0.0.1`:
 
 ```bash
@@ -340,6 +351,23 @@ docker compose -f docker-compose.yml -f docker-compose.remote.yml ps
 ```
 
 You should see `wordpress`, `mysql` and `phpmyadmin`, with **no** `caddy` or `node`.
+
+---
+
+## MySQL settings (`mysql.cnf`)
+
+`docker-compose.yml` mounts `./mysql.cnf` into the MySQL container (`/etc/mysql/conf.d/zz-custom.cnf`). The script always creates it:
+
+| Answer to *Use low-memory MySQL settings?* | `mysql.cnf` contains |
+|---|---|
+| **yes** (default) | A copy of the template's `mysql-lowmem.cnf`: `performance_schema` off, 64 MB buffer pool, `max_connections = 40`… Good for local development and small staging servers. |
+| no | An empty `[mysqld]` section, so MySQL uses its defaults. |
+
+To switch later, edit `mysql.cnf` and restart MySQL (`docker compose restart mysql`).
+
+> **Production with real traffic:** each Apache/PHP worker holds one database connection, so `max_connections = 40` can cause "Too many connections". Use the defaults there, or raise that value.
+
+The mount uses Docker's long syntax, so if `mysql.cnf` is missing Docker refuses to start, instead of silently creating an empty **folder** called `mysql.cnf` (which is what used to happen: MySQL then ran with its defaults without telling you).
 
 ---
 
@@ -355,10 +383,13 @@ DEFAULT_WP_EMAIL="pablo@codigo.co.uk"
 DEFAULT_GITHUB_ORG="pablorica"
 SAGE_PACKAGE="roots/sage"
 
-# Ports in .env.example that get replaced per project
+# Ports in env.wordpress that get replaced per project
 TPL_SSL_PORT=8443
 TPL_PMA_PORT=8081
 TPL_NODE_PORT=5173
+
+# Low-memory MySQL settings, copied to ./mysql.cnf when you answer yes
+TEMPLATE_MYSQL_LOWMEM="mysql-lowmem.cnf"
 ```
 
 If you add or rename files in `~/Dockers/default`, update the `TEMPLATE_FILES` list in the same block (files every project gets) or `SAGE_TEMPLATE_FILES` (files copied only with Sage). Subfolders such as `docs/` are created automatically.
@@ -406,7 +437,7 @@ mkcert -cert-file ./certs/local.pem -key-file ./certs/local-key.pem \
 
 ```bash
 cd ~/Dockers/<project>
-cp ../default/.env.example .env.example
+cp ../default/env.wordpress env.wordpress
 cp ../default/docker-compose.wordpress.yml docker-compose.yml
 cp ../default/docker-compose.wordpress.remote.yml docker-compose.remote.yml
 cp ../default/Caddyfile.sage.example Caddyfile
@@ -416,6 +447,8 @@ cp ../default/.editorconfig.example .editorconfig
 cp ../default/gitignore.wordpress.example .gitignore
 cp ../default/nginx.conf.staging nginx.conf.staging
 cp ../default/apache.conf.staging apache.conf.staging
+cp ../default/mysql-lowmem.cnf mysql.cnf      # low-memory MySQL settings…
+# …or MySQL defaults instead:  printf '[mysqld]\n' > mysql.cnf
 cp -R ../default/docker_sage docker
 mkdir -p docs
 cp ../default/docs/SAGE.md docs/SAGE.md
@@ -426,15 +459,15 @@ cp ../default/docs/ALPINE.md docs/ALPINE.md
 #### Create and edit the `.env` file
 
 ```bash
-cp .env.example .env
+cp env.wordpress .env
 ```
 
 Replace in `.env`:
 
 | Find | Replace with |
 |---|---|
-| `default` | `<project>` |
-| `template` | `<theme>` |
+| `default` | `<project>` (the `PROJECT_NAME` line) |
+| `template` | `<theme>` (the `WORDPRESS_THEMENAME` line) |
 | `8443` | `<ssl-port>` (`WORDPRESS_SSL_PORT`) |
 | `8081` | `<pma-port>` (`PHPMYADMIN_PORT`) |
 | `5173` | `<node-port>` (`NODE_PORT`) |
@@ -449,6 +482,8 @@ CADDY_PRODUCTION_DOMAIN=<prod-domain>
 ```
 
 > Put passwords that contain `$` in **single quotes**. Without them, Docker Compose reads `$something` as a variable.
+
+Leave the `${...}` values (`MYSQL_DATABASE`, `WORDPRESS_HOME`, `CADDY_HOSTNAME`, `VITE_PATH`) as they are: Docker Compose fills them in from `PROJECT_NAME`, the ports and the theme name. To see the final values: `docker compose config --environment`.
 
 #### Fill in the placeholders (`.gitignore` and staging server configs)
 
@@ -500,8 +535,8 @@ NAME                    ...   PORTS
 docker compose exec mysql mysqladmin ping -uroot -p
 # -> mysqld is alive
 
-# Try logging in as the WordPress user (MYSQL_USER / MYSQL_DATABASE from .env)
-docker compose exec mysql mysql -u<db-user> -p -e "SELECT 1;" <project>
+# Try logging in as the WordPress user (uses MYSQL_USER / MYSQL_DATABASE inside the container)
+docker compose exec mysql sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" -e "SELECT 1;" "$MYSQL_DATABASE"'
 ```
 
 #### Run the WordPress installation
@@ -708,7 +743,9 @@ docker compose run --rm wpcli plugin list    # WP-CLI (any wp command)
 | Browser shows a certificate warning | Run `mkcert -install` once, then restart the browser. |
 | "MySQL didn't come up" | `docker compose logs mysql`. If you changed passwords after the first start, the old database volume still has the old ones. Run `docker compose down -v` (**deletes the database**) and start again. |
 | Automatic WordPress install failed | Finish it in the browser at `https://<project>.localhost:<ssl-port>/`. The rest of the script continues. |
-| "`KEY` not found in .env" | `.env.example` doesn't have that variable. Add it to `.env` by hand. |
+| "`KEY` not found in .env" | `env.wordpress` doesn't have that variable. Add it to `.env` by hand. |
+| "`mysql.cnf` is missing or isn't a file" / Docker: `bind source path does not exist` | A single-file mount is missing (`wp-config.php`, `uploads.ini`, `Caddyfile` or `mysql.cnf`). If it exists as a **folder**, delete the folder, create the file (see [MySQL settings](#mysql-settings-mysqlcnf)), then start again. |
+| A value in `.env` looks wrong (`WORDPRESS_HOME`, database name…) | Many values are derived from `PROJECT_NAME` and the ports. Check the final values with `docker compose config --environment`. |
 | `Permission denied` in the themes folder | The folder belongs to the container user. Use `sudo` (the script does this automatically). |
 | `vendor/` owned by root after `composer update` | On Linux, uncomment `user: "${UID:-1000}:${GID:-1000}"` in the `composer` service, or add `--user "$(id -u):$(id -g)"` to the command. |
 | Composer complains about the PHP version | The `composer` image's PHP differs from the `wordpress` one. Add `--ignore-platform-reqs`, as long as the `wordpress` container meets Sage's requirements. |

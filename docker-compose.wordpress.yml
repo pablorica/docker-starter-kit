@@ -1,28 +1,160 @@
-# docker-compose.yml
+# docker-compose.yml — LOCAL development (copied from docker-compose.wordpress.yml by new-wp-sage.sh)
+#
+# Profiles:
+#   dev    caddy + node (Vite watcher)   -> COMPOSE_PROFILES=dev in .env
+#   tools  wpcli + composer, one-off containers:
+#            docker compose run --rm wpcli plugin list
+#            docker compose run --rm composer install
+#          (`run` enables the profile automatically, no --profile needed)
+#
+# Names come from PROJECT_NAME in .env:
+#   containers  <project>_mysql, _wordpress, _phpmyadmin, _caddy, _node
+#   volumes     <project>_mysql_data, <project>_theme_node_modules
+#
+# Single-file mounts use the long syntax: if the file is missing, Docker refuses to
+# start instead of silently creating an empty FOLDER with that name.
+
+name: ${PROJECT_NAME:?Set PROJECT_NAME in .env}
+
+# Shared by wordpress and wpcli, so both always get the same settings
+x-wp-env: &wp-env
+  WORDPRESS_DB_HOST: mysql:3306
+  WORDPRESS_DB_USER: ${MYSQL_USER:?}
+  WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD:?}
+  WORDPRESS_DB_NAME: ${MYSQL_DATABASE:?}
+  WORDPRESS_HOME: ${WORDPRESS_HOME:?Set WORDPRESS_HOME in .env (no trailing slash)}
+  WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
+  WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX:-wp_}
+  WORDPRESS_DEBUG: ${WORDPRESS_DEBUG:-false}
+  APP_ENV: ${APP_ENV:?Set APP_ENV in .env}
+  ACF_PRO_LICENSE: ${ACF_PRO_LICENSE:-}
+  WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY:-}
+  WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY:-}
+  WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY:-}
+  WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY:-}
+  WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT:-}
+  WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT:-}
+  WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT:-}
+  WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT:-}
+
 services:
+  mysql:
+    # Pin a specific version, never :latest (MySQL can't downgrade 8.0.x data)
+    image: mysql:8.0.36
+    container_name: ${PROJECT_NAME}_mysql
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    volumes:
+      - mysql_data:/var/lib/mysql   # persistent data; survives container restarts
+      # Custom MySQL settings. new-wp-sage.sh writes ./mysql.cnf: the low-memory
+      # settings (from mysql-lowmem.cnf) or an empty [mysqld] = MySQL defaults.
+      - type: bind
+        source: ./mysql.cnf
+        target: /etc/mysql/conf.d/zz-custom.cnf
+        read_only: true
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?}
+      MYSQL_USER: ${MYSQL_USER:?}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+    healthcheck:
+      # $$ = evaluated inside the container, so the password isn't baked into the config
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  wordpress:
+    # Pin a PHP version, never :latest
+    image: wordpress:php8.5-apache
+    container_name: ${PROJECT_NAME}_wordpress
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # No ports: Caddy is the entry point locally
+    environment:
+      <<: *wp-env
+    volumes:
+      - ./wordpress:/var/www/html
+      - type: bind
+        source: ./wp-config.php
+        target: /var/www/html/wp-config.php
+        read_only: true
+      - type: bind
+        source: ./uploads.ini
+        target: /usr/local/etc/php/conf.d/uploads.ini
+        read_only: true
+      # Inside the web root: nginx.conf.staging / apache.conf.staging block /logs/
+      - ./logs:/var/www/html/logs
+
+  phpmyadmin:
+    image: phpmyadmin:5.2
+    container_name: ${PROJECT_NAME}_phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # No ports: Caddy serves it on https://pma.<project>.localhost
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root                       # auto-login: local only
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+  # ---------------------------------------------------------------- tools
+  wpcli:
+    profiles: ["tools"]
+    image: wordpress:cli-php8.5            # same PHP as the wordpress image
+    depends_on:
+      mysql:
+        condition: service_healthy
+      wordpress:
+        condition: service_started
+    working_dir: /var/www/html
+    user: "www-data"                       # avoid root-owned files
+    environment:
+      <<: *wp-env
+    volumes:
+      - ./wordpress:/var/www/html
+      - type: bind
+        source: ./wp-config.php
+        target: /var/www/html/wp-config.php
+        read_only: true
+      - ./logs:/var/www/html/logs
+    entrypoint: ["wp"]                     # `docker compose run --rm wpcli <cmd>` runs `wp <cmd>`
+
+  composer:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: docker/composer/Dockerfile
+    working_dir: /var/www/html/wp-content/themes/${WORDPRESS_THEMENAME}
+    #user: "${UID:-1000}:${GID:-1000}"     # uncomment on Linux to avoid root-owned vendor/
+    volumes:
+      - ./wordpress:/var/www/html
+    entrypoint: ["composer"]
+
+  # ---------------------------------------------------------------- dev
   node:
     profiles: ["dev"]
     image: node:20-alpine
-    container_name: ${NODE_CONTAINER}
+    container_name: ${PROJECT_NAME}_node
     working_dir: /workspace/wp-content/themes/${WORDPRESS_THEMENAME}
     volumes:
       - ./wordpress:/workspace
       - theme_node_modules:/workspace/wp-content/themes/${WORDPRESS_THEMENAME}/node_modules
-    # Uncomment only if you later add a dev server / livereload (e.g. BrowserSync):
     ports:
-     - "${NODE_PORT}:${NODE_PORT}"
-    # Required by SAGE (Uncomment only if the template is based in SAGE)
+      - "${NODE_PORT}:${NODE_PORT}"
     environment:
-      APP_URL: ${WORDPRESS_HOME} ## Required by SAGE
-      APP_HOST: ${CADDY_HOSTNAME} ## Required by SAGE
-      NODE_PORT: ${NODE_PORT} ## Required by SAGE
-      APP_PORT: ${WORDPRESS_SSL_PORT} ## Required by SAGE
-      VITE_PATH: ${VITE_PATH} ## Required by SAGE
-      #BUD_BROWSERSLIST_UPDATE: false ## Optional in SAGE 10
-    # If file-watching doesn't fire on macOS / Windows Docker Desktop, add polling —
-    # bind-mount inotify events don't cross the host boundary there:
-    #   environment:
-    #     CHOKIDAR_USEPOLLING: "true"
+      APP_URL: ${WORDPRESS_HOME}           ## Required by SAGE
+      APP_HOST: ${CADDY_HOSTNAME}          ## Required by SAGE
+      NODE_PORT: ${NODE_PORT}              ## Required by SAGE
+      APP_PORT: ${WORDPRESS_SSL_PORT}      ## Required by SAGE
+      VITE_PATH: ${VITE_PATH}              ## Required by SAGE
+      #BUD_BROWSERSLIST_UPDATE: false      ## Optional in SAGE 10
+      # If file-watching doesn't fire on macOS / Windows Docker Desktop (bind-mount
+      # inotify events don't cross the host boundary there), enable polling:
+      #CHOKIDAR_USEPOLLING: "true"
     command:
       - sh
       - -lc
@@ -40,143 +172,32 @@ services:
 
         # Start watcher
         npm run dev
-  composer:
-    profiles: ["tools"]
-    build:
-      context: .
-      dockerfile: docker/composer/Dockerfile
-    working_dir: /var/www/html/wp-content/themes/${WORDPRESS_THEMENAME}
-    # uncomment on Linux to avoid root-owned vendor/
-    #user: "${UID:-1000}:${GID:-1000}"
-    volumes:
-      - ./wordpress:/var/www/html
-    entrypoint: ["composer"]
-  mysql:
-    # image: mysql:latest -> do not use latest to avoid unexpected breaking changes, pin to a specific version
-    image: mysql:8.0.36
-    container_name: ${MYSQL_CONTAINER}
-    command: --default-authentication-plugin=mysql_native_password
-    restart: unless-stopped
-    volumes: ## Important to make the database persistent and avoid data loss on container restart. Also allows pre-seeding with an existing database if needed.
-      - mysql_data:/var/lib/mysql
-      # Low-memory settings, shared by local and staging (useful when the server has little RAM)
-      - ./mysql-lowmem.cnf:/etc/mysql/conf.d/zz-lowmem.cnf:ro
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    healthcheck: ## Add a DB healthcheck (prevents race condition on first boot)
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  wordpress:
-    # image: wordpress:latest > do not use latest to avoid unexpected breaking changes, pin to a specific version
-    image: wordpress:php8.5-apache
-    container_name: ${WORDPRESS_CONTAINER}
-    depends_on:
-      mysql:
-        condition: service_healthy
-    # Ports are managed by Caddy
-    # ports:
-    #  - "127.0.0.1:${WORDPRESS_PORT:-8080}:80"
-    environment:
-      WORDPRESS_DB_HOST: ${MYSQL_HOST}
-      WORDPRESS_DB_USER: ${MYSQL_USER}
-      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
-      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
-      WORDPRESS_HOME: ${WORDPRESS_HOME}
-      WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
-      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
-      WORDPRESS_DEBUG: ${WORDPRESS_DEBUG}
-      APP_ENV: ${APP_ENV}
-      ACF_PRO_LICENSE: ${ACF_PRO_LICENSE:-}
-      WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY:-}
-      WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY:-}
-      WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY:-}
-      WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY:-}
-      WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT:-}
-      WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT:-}
-      WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT:-}
-      WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT:-}
-    volumes:
-      - ./wordpress:/var/www/html
-      - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php
-      - ./logs:/var/www/html/logs
-      - ./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
-    restart: unless-stopped
-
-  phpmyadmin:
-    # image: phpmyadmin:latest > do not use latest to avoid unexpected breaking changes, pin to a specific version
-    image: phpmyadmin:5.2
-    container_name: ${PHPMYADMIN_CONTAINER}
-    depends_on:
-      - mysql
-    # Ports are managed by Caddy
-    # ports:
-    #   #  - "127.0.0.1:${WORDPRESS_PORT:-8080}:80"
-    environment:
-      PMA_HOST: mysql
-      PMA_USER: root
-      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    restart: unless-stopped
-
-  wpcli:
-    # image: wordpress:cli  -> do not use latest to avoid unexpected breaking changes, pin to a specific version
-    image: wordpress:cli-php8.5
-    container_name: ${WPCLI_CONTAINER}
-    depends_on: [mysql, wordpress]
-    working_dir: /var/www/html
-    user: "www-data"                    # avoid root-owned files
-    environment:
-      WORDPRESS_DB_HOST: ${MYSQL_HOST}
-      WORDPRESS_DB_USER: ${MYSQL_USER}
-      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
-      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
-      WORDPRESS_HOME: ${WORDPRESS_HOME}
-      WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
-      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
-      WORDPRESS_DEBUG: ${WORDPRESS_DEBUG}
-      WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY:-}
-      WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY:-}
-      WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY:-}
-      WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY:-}
-      WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT:-}
-      WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT:-}
-      WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT:-}
-      WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT:-}
-    volumes:
-      - ./wordpress:/var/www/html
-      - ./wp-config.php:/var/www/html/wp-config.php:ro   # <— Custom wp-config.php
-    entrypoint: ["wp"]                  # so ⁠ docker compose run wpcli <cmd> ⁠ runs ⁠ wp <cmd> ⁠
 
   caddy:
-    image: caddy:2
     profiles: ["dev"]
+    image: caddy:2
+    container_name: ${PROJECT_NAME}_caddy
     restart: unless-stopped
-    container_name: ${CADDY_CONTAINER}
     depends_on:
       - wordpress
       - phpmyadmin
     ports:
-      # - "80:80"
-      # - "443:443"
-      # - "${WORDPRESS_PORT}:${WORDPRESS_PORT}"   # optional HTTP listener for redirect
-      - "${WORDPRESS_SSL_PORT}:${WORDPRESS_SSL_PORT}"   # HTTPS on custom port
+      - "${WORDPRESS_SSL_PORT}:${WORDPRESS_SSL_PORT}"   # HTTPS on the project's own port
     environment:
       WORDPRESS_SSL_PORT: ${WORDPRESS_SSL_PORT}
       CADDY_HOSTNAME: ${CADDY_HOSTNAME}
       CADDY_PRODUCTION_DOMAIN: ${CADDY_PRODUCTION_DOMAIN}
-      NODE_CONTAINER: ${NODE_CONTAINER}   ## Required by SAGE
-      NODE_PORT: ${NODE_PORT}             ## Required by SAGE
+      NODE_CONTAINER: ${PROJECT_NAME}_node  ## Required by SAGE
+      NODE_PORT: ${NODE_PORT}               ## Required by SAGE
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
       - ./certs:/etc/caddy/certs:ro
-      - ./wordpress/wp-content/uploads:/var/www/html/wp-content/uploads:ro  # <— Caddy will check local uploads before getting them from remote server
-
+      # Caddy serves local uploads if present, otherwise fetches them from production
+      - ./wordpress/wp-content/uploads:/var/www/html/wp-content/uploads:ro
 
 volumes:
-  mysql_data: ## Persistent storage for MySQL data to prevent data loss on container restart and allow pre-seeding with existing database if needed
-  theme_node_modules: ## Theme node_modules kept in a container-only volume (off the host bind mount) for speed + correct arch
+  mysql_data:          # -> <project>_mysql_data
+  theme_node_modules:  # -> <project>_theme_node_modules (off the bind mount: speed + correct arch)
