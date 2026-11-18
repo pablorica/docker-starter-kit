@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ---
+## [0.7.1] - 2026-11-16
+
+### Added
+
+- SAGE documentation
 
 ## [0.7.0] - 2026-11-16
 
