@@ -189,6 +189,9 @@ statamic/*
 #!docker-compose.yml
 #!Caddyfile
 
+# VS Code
+!.stubs
+
 
 # Wordpress: track these mu-plugins, plugins, and themes
 !env.wordpress
